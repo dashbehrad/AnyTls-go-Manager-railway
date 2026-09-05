@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, RefreshCw, Hash, Shield, Sparkles, Clock, HardDrive, Globe, Radio } from 'lucide-react';
+import { X, Key, RefreshCw, Hash, Shield, Sparkles, Clock, HardDrive, Globe, Radio, CheckCircle2 } from 'lucide-react';
 import { AnyTlsConfig } from '../types';
 import { generateRandomPassword } from '../lib/formatters';
 
@@ -199,14 +199,14 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-medium text-white/60">
-                🔌 Server Port
+                🔌 Server Port (پورت سرور AnyTLS)
               </label>
               <button
                 type="button"
                 onClick={handleRandomPort}
                 className="text-[11px] text-amber-500 hover:underline"
               >
-                Suggest open port
+                پیشنهاد پورت خالی
               </button>
             </div>
             <div className="relative">
@@ -220,9 +220,46 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
                 className="w-full font-mono rounded-xl border border-white/10 bg-[#0d0d0d] px-3.5 py-2.5 text-white placeholder:text-white/30 focus:border-amber-500 focus:outline-none"
               />
             </div>
-            <p className="text-[11px] text-white/40 mt-1">
-              Popular AnyTLS ports: 8080, 8443, 9443, 443, 2053, 2083
-            </p>
+
+            {/* Quick Port Chips */}
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <span className="text-[10px] text-white/40 self-center mr-1">پورت‌های متداول:</span>
+              {[
+                { p: 8080, label: '8080 (پروکسی ریلوِی)' },
+                { p: 8443, label: '8443' },
+                { p: 9443, label: '9443' },
+                { p: 2083, label: '2083' },
+                { p: 2053, label: '2053' },
+              ].map((item) => (
+                <button
+                  key={item.p}
+                  type="button"
+                  onClick={() => setPort(item.p)}
+                  className={`text-[10px] px-2 py-0.5 rounded-lg border transition-colors ${
+                    port === item.p
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 font-medium'
+                      : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Smart Resolution & Helper info */}
+            {port === 8080 && (
+              <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 mt-2 bg-emerald-500/10 px-2.5 py-1.5 rounded-lg border border-emerald-500/20">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                <span>پورت ۸۰۸۰ به عنوان پورت اصلی پروکسی TCP ریلوِی و AnyTLS تأیید شد.</span>
+              </div>
+            )}
+
+            {existingPorts.includes(port) && (!editConfig || editConfig.port !== port) && (
+              <div className="flex items-center gap-1.5 text-[11px] text-amber-400 mt-2 bg-amber-500/10 px-2.5 py-1.5 rounded-lg border border-amber-500/20">
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                <span>این پورت قبلاً برای کانفیگ دیگری ثبت شده بود؛ با ذخیره، پورت {port} به این کانفیگ اختصاص یافته و تداخل به صورت خودکار برطرف می‌شود.</span>
+              </div>
+            )}
           </div>
 
           {/* Password with Auto-generation */}

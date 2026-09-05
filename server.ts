@@ -184,7 +184,33 @@ function addProcessLog(configId: string, message: string) {
 let activeWebPanelPort = 3000;
 
 function isReservedWebPanelPort(port: number): boolean {
-  return port === activeWebPanelPort || port === 3000;
+  // Port 8080 is the dedicated AnyTLS TCP proxy port, NEVER reserved for the web panel!
+  if (port === 8080) return false;
+  return port === 3000 || (activeWebPanelPort !== 8080 && port === activeWebPanelPort);
+}
+
+function findNextAvailablePort(configs: StoredConfig[], excludePorts: number[] = []): number {
+  const preferred = [8443, 9443, 10443, 11443, 2083, 2087, 2096, 8880, 2053, 2082, 8080];
+  const usedPorts = new Set<number>([
+    ...configs.map((c) => c.port),
+    ...excludePorts,
+    3000,
+  ]);
+  if (activeWebPanelPort && activeWebPanelPort !== 8080) {
+    usedPorts.add(activeWebPanelPort);
+  }
+
+  for (const p of preferred) {
+    if (!usedPorts.has(p)) {
+      return p;
+    }
+  }
+
+  let candidate = 10000 + Math.floor(Math.random() * 50000);
+  while (usedPorts.has(candidate)) {
+    candidate = 10000 + Math.floor(Math.random() * 50000);
+  }
+  return candidate;
 }
 
 // Kill any old stray processes on the designated port before binding
@@ -660,6 +686,18 @@ function loadData(): AppData {
     hasChanges = true;
   }
 
+  // Auto-deduplicate any existing conflicting ports in database (e.g. from previous manual edits or restarts)
+  const seenPorts = new Set<number>();
+  for (const cfg of data.configs) {
+    if (seenPorts.has(cfg.port)) {
+      const freshPort = findNextAvailablePort(data.configs, Array.from(seenPorts));
+      console.log(`[Storage] Auto-resolving duplicate port in storage for '${cfg.remark}' from ${cfg.port} to ${freshPort}`);
+      cfg.port = freshPort;
+      hasChanges = true;
+    }
+    seenPorts.add(cfg.port);
+  }
+
   if (hasChanges) {
     saveData(data);
   }
@@ -1062,10 +1100,20 @@ async function startServer() {
       }
 
       const data = loadData();
-      const portConflict = data.configs.some((c) => c.port === numericPort);
-      if (portConflict) {
-        res.status(400).json({ error: `پورت ${numericPort} قبلاً استفاده شده است. لطفاً پورت دیگری انتخاب کنید.` });
-        return;
+
+      // Auto-resolve port collision: If another config is already on this port (e.g. 8080),
+      // gracefully reassign the older config to another available port so this config gets the requested port!
+      const conflictingConfigs = data.configs.filter((c) => c.port === numericPort);
+      for (const conflict of conflictingConfigs) {
+        const nextPort = findNextAvailablePort(data.configs, [numericPort]);
+        console.log(`[AnyTLS Supervisor] Auto-resolving port collision: Moving existing config '${conflict.remark}' from port ${numericPort} to port ${nextPort}`);
+        stopAnyTlsServer(conflict.id);
+        conflict.port = nextPort;
+        if (conflict.status === 'active') {
+          startAnyTlsServer(conflict).catch((procErr) => {
+            console.error(`[AnyTLS Supervisor] Error restarting reassigned config ${conflict.remark}:`, procErr.message);
+          });
+        }
       }
 
       const now = new Date();
@@ -1155,10 +1203,19 @@ async function startServer() {
           return;
         }
 
-        const portConflict = data.configs.some((c) => c.id !== id && c.port === numericPort);
-        if (portConflict) {
-          res.status(400).json({ error: `پورت ${numericPort} قبلاً استفاده شده است` });
-          return;
+        // Auto-resolve port collision: If another config is already on this port,
+        // gracefully reassign that config to another available port so current config can take numericPort!
+        const conflictingConfigs = data.configs.filter((c) => c.id !== id && c.port === numericPort);
+        for (const conflict of conflictingConfigs) {
+          const nextPort = findNextAvailablePort(data.configs, [numericPort, current.port]);
+          console.log(`[AnyTLS Supervisor] Auto-resolving port collision: Moving existing config '${conflict.remark}' from port ${numericPort} to port ${nextPort}`);
+          stopAnyTlsServer(conflict.id);
+          conflict.port = nextPort;
+          if (conflict.status === 'active') {
+            startAnyTlsServer(conflict).catch((procErr) => {
+              console.error(`[AnyTLS Supervisor] Error restarting reassigned config ${conflict.remark}:`, procErr.message);
+            });
+          }
         }
         current.port = numericPort;
       }
