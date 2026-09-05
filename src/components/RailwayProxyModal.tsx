@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Key,
   Globe,
+  Sparkles,
 } from 'lucide-react';
 import { RailwayInfo } from '../types';
 import { api } from '../lib/api';
@@ -291,46 +292,93 @@ export const RailwayProxyModal: React.FC<RailwayProxyModalProps> = ({
             </ol>
           </div>
 
+          {/* Simplified variables highlight */}
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-4 space-y-2">
+            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-300">
+              <Sparkles className="h-4 w-4 text-emerald-400" />
+              <span>پیکربندی هوشمند و خودکار (فقط Username و Password لازم است!)</span>
+            </div>
+            <p className="text-xs text-white/70 leading-relaxed">
+              دیگر نیازی به تعریف متغیرهای پیچیده نیست. شما کافیست در تب <strong>Variables</strong> در Railway فقط نام کاربری و پسوورد دلخواهتان را ست کنید. تمامی موارد دیگر (پورت‌ها، اتصال TCP Proxy ریلوی، دامنه‌ها و هسته سرور) به صورت ۱۰۰٪ خودکار شناسایی و متصل می‌شوند.
+            </p>
+          </div>
+
           {/* Environment variables reference */}
           <div className="rounded-xl border border-white/5 bg-[#0d0d0d] p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-xs font-semibold text-white/90 flex items-center gap-2">
                 <Key className="h-4 w-4 text-amber-500" />
-                متغیرهای محیطی Railway (Variables)
+                <span>متغیرهای لازم برای وارد کردن در Railway (Variables)</span>
               </div>
-              <span className="text-[10px] text-white/40">در تب Variables سرویس Railway ذخیره کنید</span>
+              <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded font-mono">
+                فقط ۲ متغیر
+              </span>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {[
-                { name: 'ADMIN_USERNAME', desc: 'نام کاربری ادمین پنل', defaultVal: 'admin' },
-                { name: 'ADMIN_PASSWORD', desc: 'رمز عبور ادمین پنل (بدون ریست شدن هنگام دیپلوی مجدد)', defaultVal: 'your_password' },
-                { name: 'RAILWAY_TCP_PROXY_DOMAIN', desc: 'دامین دریافتی از بخش TCP Proxying', defaultVal: domain || 'junction.proxy.rlwy.net' },
-                { name: 'RAILWAY_TCP_PROXY_PORT', desc: 'پورت دریافتی از بخش TCP Proxying', defaultVal: port || '12345' },
-                { name: 'ANYTLS_PORT', desc: 'پورت داخلی AnyTLS در کانتینر', defaultVal: '8443' },
-                { name: 'SNI_DEFAULT', desc: 'دامنه پیش‌فرض برای SNI', defaultVal: 'cloudflare.com' },
+                {
+                  name: 'USERNAME',
+                  altName: 'ADMIN_USERNAME',
+                  desc: 'نام کاربری دلخواه شما برای ورود به پنل',
+                  defaultVal: railwayInfo?.adminUsername || 'admin',
+                },
+                {
+                  name: 'PASSWORD',
+                  altName: 'ADMIN_PASSWORD',
+                  desc: 'رمز عبور دلخواه و اختصاصی شما برای ادمین',
+                  defaultVal: 'my_secret_password_123',
+                },
               ].map((v) => (
                 <div
                   key={v.name}
-                  className="flex items-center justify-between gap-2 p-2 rounded-lg bg-white/[0.02] border border-white/5 hover:border-white/10 transition"
+                  className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-white/[0.02] border border-emerald-500/20 hover:border-emerald-500/40 transition"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="font-mono text-xs text-purple-300 truncate">{v.name}</div>
-                    <div className="text-[10px] text-white/50 truncate">{v.desc}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-emerald-300 font-bold">{v.name}</span>
+                      <span className="text-[10px] text-white/40 font-mono">یا {v.altName}</span>
+                    </div>
+                    <div className="text-[11px] text-white/60 mt-0.5">{v.desc}</div>
                   </div>
                   <button
                     onClick={() => copyText(`${v.name}=${v.defaultVal}`, v.name)}
-                    className="flex items-center gap-1 text-[11px] text-white/40 hover:text-white px-2 py-1 rounded bg-white/5"
+                    className="flex items-center gap-1 text-[11px] text-white/60 hover:text-white px-2.5 py-1 rounded bg-white/5 hover:bg-white/10 transition"
                   >
                     {copiedVar === v.name ? (
-                      <Check className="h-3 w-3 text-emerald-400" />
+                      <Check className="h-3.5 w-3.5 text-emerald-400" />
                     ) : (
-                      <Copy className="h-3 w-3" />
+                      <Copy className="h-3.5 w-3.5" />
                     )}
                     <span>کپی</span>
                   </button>
                 </div>
               ))}
+            </div>
+
+            {/* Automatic items explanation */}
+            <div className="pt-2 border-t border-white/5">
+              <div className="text-[11px] font-medium text-white/50 mb-2">
+                موارد زیر کاملاً خودکار هستند (نیازی به تنظیم متغیر ندارند):
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                <div className="flex items-center gap-1.5 text-white/70 bg-white/[0.02] p-2 rounded-lg border border-white/5">
+                  <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                  <span><strong>TCP Proxy ریلوی:</strong> خودکار از پنل ریلوی تزریق می‌شود</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-white/70 bg-white/[0.02] p-2 rounded-lg border border-white/5">
+                  <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                  <span><strong>پورت وب پنل:</strong> خودکار توسط Railway تنظیم می‌شود</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-white/70 bg-white/[0.02] p-2 rounded-lg border border-white/5">
+                  <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                  <span><strong>پورت AnyTLS:</strong> به طور پیش‌فرض روی 8443</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-white/70 bg-white/[0.02] p-2 rounded-lg border border-white/5">
+                  <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                  <span><strong>دامنه SNI:</strong> خودکار به cloudflare.com</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

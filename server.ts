@@ -447,45 +447,129 @@ function ensureDataDir(): void {
   }
 }
 
+// ----------------------------------------------------
+// Simplified & Automatic Environment Detection
+// Users only need to set USERNAME and PASSWORD.
+// All other variables (ports, proxy, SNI) are 100% automatic!
+// ----------------------------------------------------
+function getEnvAdminCredentials(): {
+  username: string;
+  password?: string;
+  isCustomUser: boolean;
+  isCustomPass: boolean;
+} {
+  const explicitUser = (
+    process.env.ADMIN_USERNAME ||
+    process.env.USERNAME ||
+    process.env.PANEL_USERNAME ||
+    process.env.ADMIN_USER ||
+    ''
+  ).trim();
+
+  let finalUser = 'admin';
+  let isCustomUser = false;
+
+  if (explicitUser && explicitUser !== 'root' && explicitUser !== 'node' && explicitUser !== 'runner') {
+    finalUser = explicitUser;
+    isCustomUser = true;
+  } else if (process.env.ADMIN_USERNAME || process.env.PANEL_USERNAME) {
+    finalUser = explicitUser;
+    isCustomUser = true;
+  }
+
+  const rawPass = (
+    process.env.ADMIN_PASSWORD ||
+    process.env.PASSWORD ||
+    process.env.PANEL_PASSWORD ||
+    process.env.ADMIN_PASS ||
+    process.env.PASS ||
+    ''
+  ).trim();
+
+  const isCustomPass = Boolean(rawPass);
+  const finalPass = rawPass || 'admin123';
+
+  return {
+    username: finalUser,
+    password: isCustomPass ? finalPass : undefined,
+    isCustomUser,
+    isCustomPass,
+  };
+}
+
+function getEnvTcpProxyInfo(data?: AppData): {
+  domain: string;
+  port: number;
+  isAutoDetected: boolean;
+} {
+  // Railway automatically sets RAILWAY_TCP_PROXY_DOMAIN & RAILWAY_TCP_PROXY_PORT
+  // when the user clicks "Add TCP Proxy" on internal port 8443. No manual env needed!
+  const railwayDomain = (process.env.RAILWAY_TCP_PROXY_DOMAIN || '').trim();
+  const railwayPort = Number(process.env.RAILWAY_TCP_PROXY_PORT || 0);
+
+  const fallbackDomain = (
+    process.env.TCP_PROXY_DOMAIN ||
+    process.env.TCP_PROXY_HOST ||
+    process.env.PROXY_DOMAIN ||
+    process.env.PROXY_HOST ||
+    data?.tcpProxyDomain ||
+    ''
+  ).trim();
+
+  const fallbackPort = Number(
+    process.env.TCP_PROXY_PORT ||
+    process.env.PROXY_PORT ||
+    data?.tcpProxyPort ||
+    0
+  );
+
+  const domain = railwayDomain || fallbackDomain;
+  const port = railwayPort || fallbackPort;
+  const isAutoDetected = Boolean(railwayDomain && railwayPort > 0);
+
+  return { domain, port, isAutoDetected };
+}
+
 function getDefaultData(): AppData {
-  const envAdminUser = (process.env.ADMIN_USERNAME || process.env.PANEL_USERNAME || 'admin').trim();
-  const envAdminPass = (process.env.ADMIN_PASSWORD || process.env.PANEL_PASSWORD || 'admin123').trim();
-  const envTcpDomain = (process.env.RAILWAY_TCP_PROXY_DOMAIN || process.env.TCP_PROXY_HOST || '').trim();
-  const envTcpPort = Number(process.env.RAILWAY_TCP_PROXY_PORT || process.env.TCP_PROXY_PORT || 0);
+  const { username: envAdminUser, password: envAdminPass } = getEnvAdminCredentials();
+  const envTcpInfo = getEnvTcpProxyInfo();
 
   const salt = crypto.randomBytes(16).toString('hex');
-  const passwordHash = hashPassword(envAdminPass, salt);
+  const passwordHash = hashPassword(envAdminPass || 'admin123', salt);
 
   const now = new Date();
   const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
+  const defaultSni = (process.env.SNI_DEFAULT || 'cloudflare.com').trim();
+  const defaultPort = Number(process.env.ANYTLS_PORT || 8443);
+
   return {
     admin: {
-      username: envAdminUser,
+      username: envAdminUser || 'admin',
       passwordHash,
       salt,
     },
     serverIp: '127.0.0.1',
     panelPort: 3000,
-    tcpProxyDomain: envTcpDomain,
-    tcpProxyPort: envTcpPort,
+    tcpProxyDomain: envTcpInfo.domain,
+    tcpProxyPort: envTcpInfo.port,
     configs: [
       {
         id: 'cfg-' + crypto.randomBytes(4).toString('hex'),
-        remark: 'Railway-AnyTLS-VIP',
-        port: 8443,
+        remark: 'Railway-AnyTLS-Auto',
+        port: defaultPort,
         password: crypto.randomBytes(12).toString('base64url'),
-        sni: process.env.SNI_DEFAULT || 'cloudflare.com',
-        trafficLimitGB: 100,
+        sni: defaultSni,
+        trafficLimitGB: 0,
         trafficUsedBytes: 0,
         expireDays: 30,
         expireAt: thirtyDaysLater.toISOString(),
         createdAt: now.toISOString(),
         status: 'active',
         insecure: true,
-        notes: 'Optimized AnyTLS configuration for Railway TCP Proxy & NekoBox',
-        tcpProxyDomain: envTcpDomain,
-        tcpProxyPort: envTcpPort,
+        notes: 'Auto-configured AnyTLS profile with automatic Railway TCP Proxy & NekoBox link',
+        tcpProxyDomain: envTcpInfo.domain,
+        tcpProxyPort: envTcpInfo.port,
       },
     ],
   };
@@ -520,18 +604,17 @@ function loadData(): AppData {
     hasChanges = true;
   }
 
-  // Environment variable overrides for Railway deployment
-  const envAdminUser = (process.env.ADMIN_USERNAME || process.env.PANEL_USERNAME || '').trim();
-  const envAdminPass = (process.env.ADMIN_PASSWORD || process.env.PANEL_PASSWORD || '').trim();
-  const envTcpDomain = (process.env.RAILWAY_TCP_PROXY_DOMAIN || process.env.TCP_PROXY_HOST || '').trim();
-  const envTcpPort = Number(process.env.RAILWAY_TCP_PROXY_PORT || process.env.TCP_PROXY_PORT || 0);
+  // Automatic environment variable synchronization
+  // Only USERNAME and PASSWORD are required from user.
+  const { username: envAdminUser, password: envAdminPass, isCustomUser, isCustomPass } = getEnvAdminCredentials();
+  const envTcpInfo = getEnvTcpProxyInfo(data);
 
-  if (envAdminUser && data.admin.username !== envAdminUser) {
+  if (isCustomUser && envAdminUser && data.admin.username !== envAdminUser) {
     data.admin.username = envAdminUser;
     hasChanges = true;
   }
 
-  if (envAdminPass) {
+  if (isCustomPass && envAdminPass) {
     if (!data.admin.salt) {
       data.admin.salt = crypto.randomBytes(16).toString('hex');
     }
@@ -542,13 +625,14 @@ function loadData(): AppData {
     }
   }
 
-  if (envTcpDomain && !data.tcpProxyDomain) {
-    data.tcpProxyDomain = envTcpDomain;
+  // Auto-update TCP Proxy if Railway injected or provided new variables
+  if (envTcpInfo.domain && data.tcpProxyDomain !== envTcpInfo.domain) {
+    data.tcpProxyDomain = envTcpInfo.domain;
     hasChanges = true;
   }
 
-  if (envTcpPort && !data.tcpProxyPort) {
-    data.tcpProxyPort = envTcpPort;
+  if (envTcpInfo.port > 0 && data.tcpProxyPort !== envTcpInfo.port) {
+    data.tcpProxyPort = envTcpInfo.port;
     hasChanges = true;
   }
 
@@ -877,8 +961,9 @@ async function startServer() {
       process.env.RAILWAY_STATIC_URL ||
       process.env.RAILWAY_PUBLIC_DOMAIN
     );
-    const globalTcpDomain = process.env.RAILWAY_TCP_PROXY_DOMAIN || process.env.TCP_PROXY_HOST || data.tcpProxyDomain || '';
-    const globalTcpPort = Number(process.env.RAILWAY_TCP_PROXY_PORT || process.env.TCP_PROXY_PORT || data.tcpProxyPort || 0);
+    const envTcpInfo = getEnvTcpProxyInfo(data);
+    const globalTcpDomain = envTcpInfo.domain;
+    const globalTcpPort = envTcpInfo.port;
 
     const configsWithProcess = data.configs.map((cfg) => {
       const proc = activeProcesses.get(cfg.id);
@@ -1194,28 +1279,20 @@ async function startServer() {
       process.env.RAILWAY_STATIC_URL ||
       process.env.RAILWAY_PUBLIC_DOMAIN
     );
-    const tcpProxyDomain = (
-      process.env.RAILWAY_TCP_PROXY_DOMAIN ||
-      process.env.TCP_PROXY_HOST ||
-      data.tcpProxyDomain ||
-      ''
-    ).trim();
-    const tcpProxyPort = Number(
-      process.env.RAILWAY_TCP_PROXY_PORT ||
-      process.env.TCP_PROXY_PORT ||
-      data.tcpProxyPort ||
-      0
-    );
+    const { username: envAdminUser, isCustomUser, isCustomPass } = getEnvAdminCredentials();
+    const envTcpInfo = getEnvTcpProxyInfo(data);
     const internalPort = Number(process.env.ANYTLS_PORT || 8443);
 
     res.json({
       isRailway,
-      tcpProxyDomain,
-      tcpProxyPort,
+      tcpProxyDomain: envTcpInfo.domain,
+      tcpProxyPort: envTcpInfo.port,
       internalPort,
-      hasTcpProxy: Boolean(tcpProxyDomain && tcpProxyPort > 0),
-      adminUsernameFromEnv: Boolean(process.env.ADMIN_USERNAME || process.env.PANEL_USERNAME),
-      adminPasswordFromEnv: Boolean(process.env.ADMIN_PASSWORD || process.env.PANEL_PASSWORD),
+      hasTcpProxy: Boolean(envTcpInfo.domain && envTcpInfo.port > 0),
+      isAutoDetected: envTcpInfo.isAutoDetected,
+      adminUsername: data.admin.username,
+      adminUsernameFromEnv: isCustomUser,
+      adminPasswordFromEnv: isCustomPass,
       railwayPublicDomain: process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL || '',
     });
   });

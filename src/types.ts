@@ -58,6 +58,8 @@ export interface RailwayInfo {
   tcpProxyPort: number;
   internalPort: number;
   hasTcpProxy: boolean;
+  isAutoDetected?: boolean;
+  adminUsername?: string;
   adminUsernameFromEnv: boolean;
   adminPasswordFromEnv: boolean;
   railwayPublicDomain?: string;

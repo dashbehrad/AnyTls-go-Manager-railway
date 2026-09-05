@@ -103,12 +103,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </form>
 
           {/* Default Credentials Callout */}
-          <div className="mt-6 rounded-xl border border-white/5 bg-[#0d0d0d] p-3 text-xs text-white/50 space-y-1">
+          <div className="mt-6 rounded-xl border border-white/5 bg-[#0d0d0d] p-3 text-xs text-white/50 space-y-1.5">
             <div className="flex items-center gap-1.5 text-white/70 font-medium">
               <Info className="h-3.5 w-3.5 text-amber-500" />
-              Default credentials:
+              Credentials Information:
             </div>
-            <div className="flex justify-between font-mono text-[11px] pt-1">
+            <p className="text-[11px] text-white/40 leading-relaxed">
+              If configured in Railway Variables (<code className="text-emerald-400 font-mono">USERNAME</code> & <code className="text-emerald-400 font-mono">PASSWORD</code>), use those. Otherwise default:
+            </p>
+            <div className="flex justify-between font-mono text-[11px] pt-0.5 border-t border-white/5">
               <span>Username: <strong className="text-white">admin</strong></span>
               <span>Password: <strong className="text-white">admin123</strong></span>
             </div>
