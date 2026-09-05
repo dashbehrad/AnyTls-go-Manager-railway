@@ -11,8 +11,9 @@ import {
   FolderArchive,
   Layers,
   Sparkles,
+  Radio,
 } from 'lucide-react';
-import { AnyTlsConfig, ServerStatus, RenewOptions } from './types';
+import { AnyTlsConfig, ServerStatus, RenewOptions, RailwayInfo } from './types';
 import { api, getStoredToken } from './lib/api';
 import { Navbar } from './components/Navbar';
 import { StatsCards } from './components/StatsCards';
@@ -23,6 +24,7 @@ import { RenewModal } from './components/RenewModal';
 import { InstallGuideModal } from './components/InstallGuideModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { ProcessLogsModal } from './components/ProcessLogsModal';
+import { RailwayProxyModal } from './components/RailwayProxyModal';
 import { LoginView } from './components/LoginView';
 
 export default function App() {
@@ -37,6 +39,7 @@ export default function App() {
   const [configs, setConfigs] = useState<AnyTlsConfig[]>([]);
   const [serverIp, setServerIp] = useState<string>('127.0.0.1');
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
+  const [railwayInfo, setRailwayInfo] = useState<RailwayInfo | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Search & Filter
@@ -45,6 +48,7 @@ export default function App() {
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isRailwayProxyOpen, setIsRailwayProxyOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<AnyTlsConfig | null>(null);
   const [qrModalConfig, setQrModalConfig] = useState<AnyTlsConfig | null>(null);
   const [renewModalConfig, setRenewModalConfig] = useState<AnyTlsConfig | null>(null);
@@ -105,9 +109,10 @@ export default function App() {
     if (!isLoggedIn) return;
     setIsLoading(true);
     try {
-      const [configsRes, statusRes] = await Promise.all([
+      const [configsRes, statusRes, rStatusRes] = await Promise.all([
         api.getConfigs(),
         api.getServerStatus().catch(() => null),
+        api.getRailwayStatus().catch(() => null),
       ]);
       setConfigs(configsRes.configs || []);
       if (configsRes.serverIp) setServerIp(configsRes.serverIp);
@@ -116,6 +121,9 @@ export default function App() {
         if (statusRes.isStandalone) {
           setIsStandalone(true);
         }
+      }
+      if (rStatusRes) {
+        setRailwayInfo(rStatusRes);
       }
     } catch (err: any) {
       console.error('Failed to load configs:', err);
@@ -253,11 +261,52 @@ export default function App() {
         username={username}
         isStandalone={isStandalone}
         onOpenInstallGuide={() => setIsInstallGuideOpen(true)}
+        onOpenRailwayProxy={() => setIsRailwayProxyOpen(true)}
         onOpenChangePassword={() => setIsChangePasswordOpen(true)}
         onLogout={handleLogout}
       />
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 space-y-6">
+        {/* Railway & TCP Proxy Status Banner */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border border-purple-500/20 bg-purple-500/[0.04] p-4 sm:p-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-lg">
+              <Radio className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-medium text-white text-base">
+                  <span>سازگاری با Railway و اتصال TCP Proxy</span>
+                </h2>
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-mono font-medium border ${
+                    railwayInfo?.hasTcpProxy
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                  }`}
+                >
+                  {railwayInfo?.hasTcpProxy
+                    ? `TCP Proxy: ${railwayInfo.tcpProxyDomain}:${railwayInfo.tcpProxyPort}`
+                    : 'نیاز به تنظیم TCP Proxy در Railway'}
+                </span>
+              </div>
+              <p className="text-xs text-white/50 mt-1 leading-relaxed">
+                کانفیگ‌های AnyTLS شما می‌توانند مستقیماً از طریق پروکسی TCP ریلوی برای کلاینت‌هایی مثل NekoBox، Sing-box و Clash تولید شوند.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            <button
+              onClick={() => setIsRailwayProxyOpen(true)}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-500 px-4 py-2 text-xs sm:text-sm font-medium text-white shadow-lg shadow-purple-600/20 transition whitespace-nowrap"
+            >
+              <Radio className="h-4 w-4" />
+              <span>تنظیمات و تست TCP Proxy</span>
+            </button>
+          </div>
+        </div>
+
         {/* Quick Announcement / Setup Banner (Hidden on standalone Ubuntu deployment) */}
         {!isStandalone && (
           <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-[#0d0d0d] p-4 sm:p-5">
@@ -426,6 +475,15 @@ export default function App() {
         onSubmit={handleSaveConfig}
         editConfig={editingConfig}
         existingPorts={existingPorts}
+        defaultTcpProxyDomain={railwayInfo?.tcpProxyDomain || ''}
+        defaultTcpProxyPort={railwayInfo?.tcpProxyPort || 0}
+      />
+
+      <RailwayProxyModal
+        isOpen={isRailwayProxyOpen}
+        onClose={() => setIsRailwayProxyOpen(false)}
+        railwayInfo={railwayInfo}
+        onRefreshInfo={fetchData}
       />
 
       <QrCodeModal

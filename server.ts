@@ -36,6 +36,8 @@ interface StoredConfig {
   status: 'active' | 'disabled' | 'expired';
   insecure: boolean;
   notes?: string;
+  tcpProxyDomain?: string;
+  tcpProxyPort?: number;
 }
 
 interface AppData {
@@ -47,6 +49,8 @@ interface AppData {
   serverIp: string;
   panelPort: number;
   isStandalone?: boolean;
+  tcpProxyDomain?: string;
+  tcpProxyPort?: number;
   configs: StoredConfig[];
 }
 
@@ -103,6 +107,64 @@ function getAnyTlsBinaryPath(): string | null {
       }
       return p;
     }
+  }
+  return null;
+}
+
+// Auto-download official AnyTLS server binary if missing (critical for Railway and dynamic containers)
+async function ensureAnyTlsBinary(): Promise<string | null> {
+  const existing = getAnyTlsBinaryPath();
+  if (existing) {
+    return existing;
+  }
+
+  if (os.platform() !== 'linux') {
+    return null;
+  }
+
+  const rawArch = os.arch();
+  const arch = rawArch === 'arm64' ? 'arm64' : 'amd64';
+  const releaseVer = '0.0.13';
+  const url = `https://github.com/anytls/anytls-go/releases/download/v${releaseVer}/anytls_${releaseVer}_linux_${arch}.zip`;
+  const targetBinDir = path.join(process.cwd(), 'bin');
+  const targetBin = path.join(targetBinDir, 'anytls-server');
+
+  console.log(`[AnyTLS Supervisor] Binary not found. Auto-downloading v${releaseVer} for linux/${arch} from official release...`);
+  try {
+    if (!fs.existsSync(targetBinDir)) {
+      fs.mkdirSync(targetBinDir, { recursive: true });
+    }
+    const tempZip = path.join(os.tmpdir(), `anytls-${Date.now()}.zip`);
+    const tempExtract = path.join(os.tmpdir(), `anytls-extract-${Date.now()}`);
+
+    execSync(`curl -fsSL "${url}" -o "${tempZip}" && unzip -q -o "${tempZip}" -d "${tempExtract}"`, {
+      timeout: 45000,
+    });
+
+    const candidateFile = path.join(tempExtract, 'anytls-server');
+    if (fs.existsSync(candidateFile)) {
+      fs.copyFileSync(candidateFile, targetBin);
+      try {
+        fs.chmodSync(targetBin, 0o755);
+      } catch {}
+
+      try {
+        if (!fs.existsSync('/usr/local/bin/anytls-server')) {
+          fs.copyFileSync(candidateFile, '/usr/local/bin/anytls-server');
+          fs.chmodSync('/usr/local/bin/anytls-server', 0o755);
+        }
+      } catch {}
+
+      try {
+        fs.unlinkSync(tempZip);
+        fs.rmSync(tempExtract, { recursive: true, force: true });
+      } catch {}
+
+      console.log(`[AnyTLS Supervisor] ✓ Successfully installed anytls-server to ${targetBin}`);
+      return targetBin;
+    }
+  } catch (err: any) {
+    console.warn('[AnyTLS Supervisor] Automatic binary download failed:', err.message);
   }
   return null;
 }
@@ -386,50 +448,44 @@ function ensureDataDir(): void {
 }
 
 function getDefaultData(): AppData {
+  const envAdminUser = (process.env.ADMIN_USERNAME || process.env.PANEL_USERNAME || 'admin').trim();
+  const envAdminPass = (process.env.ADMIN_PASSWORD || process.env.PANEL_PASSWORD || 'admin123').trim();
+  const envTcpDomain = (process.env.RAILWAY_TCP_PROXY_DOMAIN || process.env.TCP_PROXY_HOST || '').trim();
+  const envTcpPort = Number(process.env.RAILWAY_TCP_PROXY_PORT || process.env.TCP_PROXY_PORT || 0);
+
   const salt = crypto.randomBytes(16).toString('hex');
-  const passwordHash = hashPassword('admin123', salt);
+  const passwordHash = hashPassword(envAdminPass, salt);
 
   const now = new Date();
   const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   return {
     admin: {
-      username: 'admin',
+      username: envAdminUser,
       passwordHash,
       salt,
     },
     serverIp: '127.0.0.1',
     panelPort: 3000,
+    tcpProxyDomain: envTcpDomain,
+    tcpProxyPort: envTcpPort,
     configs: [
       {
         id: 'cfg-' + crypto.randomBytes(4).toString('hex'),
-        remark: 'User-VIP-01',
+        remark: 'Railway-AnyTLS-VIP',
         port: 8443,
         password: crypto.randomBytes(12).toString('base64url'),
-        sni: 'cloudflare.com',
-        trafficLimitGB: 50,
-        trafficUsedBytes: 12.4 * 1024 * 1024 * 1024,
+        sni: process.env.SNI_DEFAULT || 'cloudflare.com',
+        trafficLimitGB: 100,
+        trafficUsedBytes: 0,
         expireDays: 30,
         expireAt: thirtyDaysLater.toISOString(),
-        createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: now.toISOString(),
         status: 'active',
         insecure: true,
-        notes: 'Default AnyTLS test config for Android and iOS clients',
-      },
-      {
-        id: 'cfg-' + crypto.randomBytes(4).toString('hex'),
-        remark: 'User-Work-02',
-        port: 9443,
-        password: crypto.randomBytes(12).toString('base64url'),
-        sni: 'speedtest.net',
-        trafficLimitGB: 100,
-        trafficUsedBytes: 45.8 * 1024 * 1024 * 1024,
-        expireDays: 60,
-        expireAt: new Date(now.getTime() + 28 * 24 * 60 * 60 * 1000).toISOString(),
-        createdAt: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'active',
-        insecure: true,
-        notes: 'Compatible with Sing-Box and Clash/Mihomo',
+        notes: 'Optimized AnyTLS configuration for Railway TCP Proxy & NekoBox',
+        tcpProxyDomain: envTcpDomain,
+        tcpProxyPort: envTcpPort,
       },
     ],
   };
@@ -437,27 +493,70 @@ function getDefaultData(): AppData {
 
 function loadData(): AppData {
   ensureDataDir();
+  let data: AppData;
+
   if (!fs.existsSync(DATA_FILE)) {
-    const defaultData = getDefaultData();
-    fs.writeFileSync(DATA_FILE, JSON.stringify(defaultData, null, 2), 'utf-8');
-    return defaultData;
+    data = getDefaultData();
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    return data;
   }
+
   try {
     const content = fs.readFileSync(DATA_FILE, 'utf-8');
-    const parsed = JSON.parse(content);
-    // backward compatibility check
-    if (parsed.admin && parsed.admin.password && !parsed.admin.passwordHash) {
-      const salt = crypto.randomBytes(16).toString('hex');
-      parsed.admin.passwordHash = hashPassword(parsed.admin.password, salt);
-      parsed.admin.salt = salt;
-      delete parsed.admin.password;
-      saveData(parsed);
-    }
-    return parsed;
+    data = JSON.parse(content);
   } catch (err) {
     console.error('Error loading config.json:', err);
-    return getDefaultData();
+    data = getDefaultData();
   }
+
+  let hasChanges = false;
+
+  // Backward compatibility check
+  if (data.admin && (data.admin as any).password && !data.admin.passwordHash) {
+    const salt = crypto.randomBytes(16).toString('hex');
+    data.admin.passwordHash = hashPassword((data.admin as any).password, salt);
+    data.admin.salt = salt;
+    delete (data.admin as any).password;
+    hasChanges = true;
+  }
+
+  // Environment variable overrides for Railway deployment
+  const envAdminUser = (process.env.ADMIN_USERNAME || process.env.PANEL_USERNAME || '').trim();
+  const envAdminPass = (process.env.ADMIN_PASSWORD || process.env.PANEL_PASSWORD || '').trim();
+  const envTcpDomain = (process.env.RAILWAY_TCP_PROXY_DOMAIN || process.env.TCP_PROXY_HOST || '').trim();
+  const envTcpPort = Number(process.env.RAILWAY_TCP_PROXY_PORT || process.env.TCP_PROXY_PORT || 0);
+
+  if (envAdminUser && data.admin.username !== envAdminUser) {
+    data.admin.username = envAdminUser;
+    hasChanges = true;
+  }
+
+  if (envAdminPass) {
+    if (!data.admin.salt) {
+      data.admin.salt = crypto.randomBytes(16).toString('hex');
+    }
+    const envHash = hashPassword(envAdminPass, data.admin.salt);
+    if (data.admin.passwordHash !== envHash) {
+      data.admin.passwordHash = envHash;
+      hasChanges = true;
+    }
+  }
+
+  if (envTcpDomain && !data.tcpProxyDomain) {
+    data.tcpProxyDomain = envTcpDomain;
+    hasChanges = true;
+  }
+
+  if (envTcpPort && !data.tcpProxyPort) {
+    data.tcpProxyPort = envTcpPort;
+    hasChanges = true;
+  }
+
+  if (hasChanges) {
+    saveData(data);
+  }
+
+  return data;
 }
 
 function saveData(data: AppData): void {
@@ -544,6 +643,14 @@ async function startServer() {
     const calculatedHash = hashPassword(password, data.admin.salt);
     let isAuthenticated = calculatedHash === data.admin.passwordHash;
 
+    // Check direct match with ADMIN_PASSWORD / PANEL_PASSWORD environment variable
+    const envAdminPass = (process.env.ADMIN_PASSWORD || process.env.PANEL_PASSWORD || '').trim();
+    if (!isAuthenticated && envAdminPass && password === envAdminPass) {
+      isAuthenticated = true;
+      data.admin.passwordHash = calculatedHash;
+      saveData(data);
+    }
+
     // Backward-compatibility fallback: if hash was created with sha256 or plain text
     if (!isAuthenticated && data.admin.salt) {
       const sha256Hash = crypto.createHash('sha256').update(password + data.admin.salt).digest('hex');
@@ -595,6 +702,8 @@ async function startServer() {
       isLoggedIn: true,
       username: data.admin.username,
       panelPort: data.panelPort || 3000,
+      adminUsernameFromEnv: Boolean(process.env.ADMIN_USERNAME || process.env.PANEL_USERNAME),
+      adminPasswordFromEnv: Boolean(process.env.ADMIN_PASSWORD || process.env.PANEL_PASSWORD),
     });
   });
 
@@ -760,10 +869,23 @@ async function startServer() {
       saveData(data);
     }
 
+    const isRailway = Boolean(
+      process.env.RAILWAY_ENVIRONMENT ||
+      process.env.RAILWAY_PROJECT_ID ||
+      process.env.RAILWAY_SERVICE_ID ||
+      process.env.RAILWAY_TCP_PROXY_DOMAIN ||
+      process.env.RAILWAY_STATIC_URL ||
+      process.env.RAILWAY_PUBLIC_DOMAIN
+    );
+    const globalTcpDomain = process.env.RAILWAY_TCP_PROXY_DOMAIN || process.env.TCP_PROXY_HOST || data.tcpProxyDomain || '';
+    const globalTcpPort = Number(process.env.RAILWAY_TCP_PROXY_PORT || process.env.TCP_PROXY_PORT || data.tcpProxyPort || 0);
+
     const configsWithProcess = data.configs.map((cfg) => {
       const proc = activeProcesses.get(cfg.id);
       return {
         ...cfg,
+        tcpProxyDomain: cfg.tcpProxyDomain || globalTcpDomain,
+        tcpProxyPort: cfg.tcpProxyPort || globalTcpPort,
         processRunning: proc?.status === 'running',
         processPid: proc?.pid,
       };
@@ -773,6 +895,10 @@ async function startServer() {
       configs: configsWithProcess,
       serverIp: cachedServerIp,
       binaryInstalled: Boolean(getAnyTlsBinaryPath()),
+      isRailway,
+      tcpProxyDomain: globalTcpDomain,
+      tcpProxyPort: globalTcpPort,
+      hasTcpProxy: Boolean(globalTcpDomain && globalTcpPort > 0),
     });
   });
 
@@ -786,6 +912,8 @@ async function startServer() {
       expireDays = 30,
       notes = '',
       insecure = true,
+      tcpProxyDomain,
+      tcpProxyPort,
     } = req.body;
 
     if (!remark || !port) {
@@ -832,6 +960,8 @@ async function startServer() {
       status: 'active',
       insecure: insecure !== false,
       notes: notes ? notes.trim() : '',
+      tcpProxyDomain: tcpProxyDomain ? String(tcpProxyDomain).trim() : undefined,
+      tcpProxyPort: tcpProxyPort ? Number(tcpProxyPort) : undefined,
     };
 
     data.configs.unshift(newConfig);
@@ -861,6 +991,8 @@ async function startServer() {
       expireDays,
       notes,
       insecure,
+      tcpProxyDomain,
+      tcpProxyPort,
     } = req.body;
 
     const data = loadData();
@@ -887,6 +1019,8 @@ async function startServer() {
     if (notes !== undefined) current.notes = notes.trim();
     if (insecure !== undefined) current.insecure = Boolean(insecure);
     if (trafficLimitGB !== undefined) current.trafficLimitGB = Number(trafficLimitGB);
+    if (tcpProxyDomain !== undefined) current.tcpProxyDomain = tcpProxyDomain ? String(tcpProxyDomain).trim() : undefined;
+    if (tcpProxyPort !== undefined) current.tcpProxyPort = tcpProxyPort ? Number(tcpProxyPort) : undefined;
 
     if (expireDays !== undefined) {
       const daysNum = Number(expireDays);
@@ -1048,6 +1182,147 @@ async function startServer() {
   });
 
   // ----------------------------------------------------
+  // Railway & TCP Proxy Endpoints
+  // ----------------------------------------------------
+  app.get('/api/railway/status', requireAuth, (req: Request, res: Response) => {
+    const data = loadData();
+    const isRailway = Boolean(
+      process.env.RAILWAY_ENVIRONMENT ||
+      process.env.RAILWAY_PROJECT_ID ||
+      process.env.RAILWAY_SERVICE_ID ||
+      process.env.RAILWAY_TCP_PROXY_DOMAIN ||
+      process.env.RAILWAY_STATIC_URL ||
+      process.env.RAILWAY_PUBLIC_DOMAIN
+    );
+    const tcpProxyDomain = (
+      process.env.RAILWAY_TCP_PROXY_DOMAIN ||
+      process.env.TCP_PROXY_HOST ||
+      data.tcpProxyDomain ||
+      ''
+    ).trim();
+    const tcpProxyPort = Number(
+      process.env.RAILWAY_TCP_PROXY_PORT ||
+      process.env.TCP_PROXY_PORT ||
+      data.tcpProxyPort ||
+      0
+    );
+    const internalPort = Number(process.env.ANYTLS_PORT || 8443);
+
+    res.json({
+      isRailway,
+      tcpProxyDomain,
+      tcpProxyPort,
+      internalPort,
+      hasTcpProxy: Boolean(tcpProxyDomain && tcpProxyPort > 0),
+      adminUsernameFromEnv: Boolean(process.env.ADMIN_USERNAME || process.env.PANEL_USERNAME),
+      adminPasswordFromEnv: Boolean(process.env.ADMIN_PASSWORD || process.env.PANEL_PASSWORD),
+      railwayPublicDomain: process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL || '',
+    });
+  });
+
+  app.post('/api/railway/tcp-proxy', requireAuth, (req: Request, res: Response) => {
+    const { tcpProxyDomain, tcpProxyPort } = req.body;
+    const data = loadData();
+
+    if (tcpProxyDomain !== undefined) {
+      data.tcpProxyDomain = typeof tcpProxyDomain === 'string' ? tcpProxyDomain.trim() : '';
+    }
+    if (tcpProxyPort !== undefined) {
+      const parsed = parseInt(String(tcpProxyPort), 10);
+      data.tcpProxyPort = isNaN(parsed) ? 0 : Math.max(0, Math.min(65535, parsed));
+    }
+
+    saveData(data);
+    res.json({
+      success: true,
+      message: 'Railway TCP Proxy configuration saved successfully',
+      tcpProxyDomain: data.tcpProxyDomain || '',
+      tcpProxyPort: data.tcpProxyPort || 0,
+    });
+  });
+
+  app.post('/api/railway/test-tcp-proxy', requireAuth, async (req: Request, res: Response) => {
+    const { domain, port } = req.body;
+    const data = loadData();
+    const testHost = (
+      domain ||
+      data.tcpProxyDomain ||
+      process.env.RAILWAY_TCP_PROXY_DOMAIN ||
+      process.env.TCP_PROXY_HOST ||
+      ''
+    ).trim();
+    const testPort = Number(
+      port ||
+      data.tcpProxyPort ||
+      process.env.RAILWAY_TCP_PROXY_PORT ||
+      process.env.TCP_PROXY_PORT ||
+      0
+    );
+
+    if (!testHost || !testPort) {
+      res.status(400).json({
+        success: false,
+        reachable: false,
+        message: 'TCP Proxy domain and port are required to perform connectivity test',
+      });
+      return;
+    }
+
+    const startTime = Date.now();
+    const socket = new net.Socket();
+    socket.setTimeout(4500);
+
+    let finished = false;
+    socket.once('connect', () => {
+      if (finished) return;
+      finished = true;
+      const latency = Date.now() - startTime;
+      socket.destroy();
+      res.json({
+        success: true,
+        reachable: true,
+        latencyMs: latency,
+        message: `TCP Proxy is active and responsive! (Latency: ${latency}ms to ${testHost}:${testPort})`,
+      });
+    });
+
+    socket.once('timeout', () => {
+      if (finished) return;
+      finished = true;
+      socket.destroy();
+      res.json({
+        success: false,
+        reachable: false,
+        message: `Connection to ${testHost}:${testPort} timed out (4.5s). Ensure Railway TCP Proxying is added.`,
+      });
+    });
+
+    socket.once('error', (err) => {
+      if (finished) return;
+      finished = true;
+      socket.destroy();
+      res.json({
+        success: false,
+        reachable: false,
+        message: `Failed to connect to ${testHost}:${testPort}: ${err.message}`,
+      });
+    });
+
+    try {
+      socket.connect(testPort, testHost);
+    } catch (err: any) {
+      if (!finished) {
+        finished = true;
+        res.json({
+          success: false,
+          reachable: false,
+          message: `Socket connection failed: ${err.message}`,
+        });
+      }
+    }
+  });
+
+  // ----------------------------------------------------
   // Server Status & System Info
   // ----------------------------------------------------
   app.get('/api/server/status', requireAuth, (req: Request, res: Response) => {
@@ -1057,11 +1332,20 @@ async function startServer() {
     const usedMem = totalMem - freeMem;
 
     // Check if anytls binary exists on system
-    const anytlsPath = '/usr/local/bin/anytls-server';
-    const anytlsInstalled = fs.existsSync(anytlsPath);
+    const anytlsInstalled = Boolean(getAnyTlsBinaryPath());
+
+    const isRailway = Boolean(
+      process.env.RAILWAY_ENVIRONMENT ||
+      process.env.RAILWAY_PROJECT_ID ||
+      process.env.RAILWAY_SERVICE_ID ||
+      process.env.RAILWAY_TCP_PROXY_DOMAIN ||
+      process.env.RAILWAY_STATIC_URL ||
+      process.env.RAILWAY_PUBLIC_DOMAIN
+    );
 
     const isStandalone =
       data.isStandalone === true ||
+      isRailway ||
       process.env.STANDALONE_PANEL === 'true' ||
       process.env.VITE_STANDALONE === 'true' ||
       fs.existsSync('/etc/systemd/system/anytls-panel.service') ||
@@ -1069,6 +1353,18 @@ async function startServer() {
       (process.env.NODE_ENV === 'production' && !process.env.K_SERVICE);
 
     const activeCount = data.configs.filter((c) => c.status === 'active').length;
+    const tcpProxyDomain = (
+      process.env.RAILWAY_TCP_PROXY_DOMAIN ||
+      process.env.TCP_PROXY_HOST ||
+      data.tcpProxyDomain ||
+      ''
+    ).trim();
+    const tcpProxyPort = Number(
+      process.env.RAILWAY_TCP_PROXY_PORT ||
+      process.env.TCP_PROXY_PORT ||
+      data.tcpProxyPort ||
+      0
+    );
 
     res.json({
       cpuUsage: Math.round((os.loadavg()[0] || 0.15) * 10) / 10,
@@ -1078,28 +1374,61 @@ async function startServer() {
       serverIp: cachedServerIp,
       panelPort: data.panelPort || 3000,
       anytlsInstalled,
-      anytlsVersion: anytlsInstalled ? 'v1.0.0 (anytls-go)' : 'Ready to install on Ubuntu',
+      anytlsVersion: anytlsInstalled ? 'v0.0.13 (anytls-go)' : 'Ready to install',
       activeConfigsCount: activeCount,
       totalConfigsCount: data.configs.length,
       osInfo: `${os.type()} ${os.release()} (${os.arch()})`,
       isStandalone: Boolean(isStandalone),
+      isRailway,
+      tcpProxyDomain,
+      tcpProxyPort,
+      hasTcpProxy: Boolean(tcpProxyDomain && tcpProxyPort > 0),
+      adminUsernameFromEnv: Boolean(process.env.ADMIN_USERNAME || process.env.PANEL_USERNAME),
+      adminPasswordFromEnv: Boolean(process.env.ADMIN_PASSWORD || process.env.PANEL_PASSWORD),
+      railwayPublicDomain: process.env.RAILWAY_PUBLIC_DOMAIN || process.env.RAILWAY_STATIC_URL || '',
     });
   });
 
-  // Public system info route for UI standalone detection
+  // Public system info route for UI standalone & Railway detection
   app.get('/api/system-info', (req: Request, res: Response) => {
     const data = loadData();
+    const isRailway = Boolean(
+      process.env.RAILWAY_ENVIRONMENT ||
+      process.env.RAILWAY_PROJECT_ID ||
+      process.env.RAILWAY_SERVICE_ID ||
+      process.env.RAILWAY_TCP_PROXY_DOMAIN ||
+      process.env.RAILWAY_STATIC_URL ||
+      process.env.RAILWAY_PUBLIC_DOMAIN
+    );
+    const anytlsInstalled = Boolean(getAnyTlsBinaryPath());
     const isStandalone =
       data.isStandalone === true ||
+      isRailway ||
       process.env.STANDALONE_PANEL === 'true' ||
       process.env.VITE_STANDALONE === 'true' ||
       fs.existsSync('/etc/systemd/system/anytls-panel.service') ||
-      fs.existsSync('/usr/local/bin/anytls-server') ||
+      anytlsInstalled ||
       (process.env.NODE_ENV === 'production' && !process.env.K_SERVICE);
+
+    const tcpProxyDomain = (
+      process.env.RAILWAY_TCP_PROXY_DOMAIN ||
+      process.env.TCP_PROXY_HOST ||
+      data.tcpProxyDomain ||
+      ''
+    ).trim();
+    const tcpProxyPort = Number(
+      process.env.RAILWAY_TCP_PROXY_PORT ||
+      process.env.TCP_PROXY_PORT ||
+      data.tcpProxyPort ||
+      0
+    );
 
     res.json({
       isStandalone: Boolean(isStandalone),
+      isRailway,
       serverIp: cachedServerIp,
+      tcpProxyDomain,
+      tcpProxyPort,
     });
   });
 
@@ -1201,10 +1530,11 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, '0.0.0.0', async () => {
     console.log(`AnyTLS Manager Panel running on http://0.0.0.0:${PORT}`);
-    // Automatically launch anytls-server process for each active configuration
+    // Automatically verify binary and launch anytls-server process for each active configuration
     try {
+      await ensureAnyTlsBinary();
       syncAllAnyTlsProcesses();
       startProcessWatchdog();
     } catch (err) {

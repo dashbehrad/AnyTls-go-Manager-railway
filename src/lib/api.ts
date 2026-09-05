@@ -1,4 +1,4 @@
-import { AnyTlsConfig, ServerStatus, RenewOptions, ConfigProcessDetails } from '../types';
+import { AnyTlsConfig, ServerStatus, RenewOptions, ConfigProcessDetails, RailwayInfo } from '../types';
 
 const TOKEN_KEY = 'anytls_panel_token';
 const USERNAME_KEY = 'anytls_panel_username';
@@ -144,7 +144,37 @@ export const api = {
     });
   },
 
-  async getSystemInfo(): Promise<{ isStandalone: boolean; serverIp?: string }> {
+  async getRailwayStatus(): Promise<RailwayInfo> {
+    return apiRequest<RailwayInfo>('/api/railway/status');
+  },
+
+  async updateTcpProxy(payload: {
+    tcpProxyDomain: string;
+    tcpProxyPort: number;
+  }): Promise<{ success: boolean; message: string; tcpProxyDomain: string; tcpProxyPort: number }> {
+    return apiRequest<{ success: boolean; message: string; tcpProxyDomain: string; tcpProxyPort: number }>(
+      '/api/railway/tcp-proxy',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
+  async testTcpProxy(payload?: {
+    domain?: string;
+    port?: number;
+  }): Promise<{ success: boolean; reachable: boolean; latencyMs?: number; message: string }> {
+    return apiRequest<{ success: boolean; reachable: boolean; latencyMs?: number; message: string }>(
+      '/api/railway/test-tcp-proxy',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload || {}),
+      }
+    );
+  },
+
+  async getSystemInfo(): Promise<{ isStandalone: boolean; isRailway?: boolean; serverIp?: string; tcpProxyDomain?: string; tcpProxyPort?: number }> {
     try {
       const res = await fetch('/api/system-info');
       if (!res.ok) return { isStandalone: false };

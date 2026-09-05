@@ -17,6 +17,7 @@ import {
   Hash,
   AlertTriangle,
   Terminal,
+  Radio,
 } from 'lucide-react';
 import { AnyTlsConfig } from '../types';
 import {
@@ -150,6 +151,12 @@ export const ConfigCard: React.FC<ConfigCardProps> = ({
               ) : (
                 <span className="text-amber-400/90 font-sans text-[11px] bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
                   No SNI
+                </span>
+              )}
+              {config.tcpProxyDomain && (
+                <span className="inline-flex items-center gap-1 ml-2 text-purple-300 font-sans text-[11px] bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                  <Radio className="h-3 w-3" />
+                  Proxy: {config.tcpProxyDomain}:{config.tcpProxyPort || config.port}
                 </span>
               )}
             </p>

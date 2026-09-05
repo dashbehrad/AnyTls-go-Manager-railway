@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Key, RefreshCw, Hash, Shield, Sparkles, Clock, HardDrive, Globe } from 'lucide-react';
+import { X, Key, RefreshCw, Hash, Shield, Sparkles, Clock, HardDrive, Globe, Radio } from 'lucide-react';
 import { AnyTlsConfig } from '../types';
 import { generateRandomPassword } from '../lib/formatters';
 
@@ -9,6 +9,8 @@ interface CreateEditModalProps {
   onSubmit: (data: Partial<AnyTlsConfig>) => Promise<void>;
   editConfig?: AnyTlsConfig | null;
   existingPorts: number[];
+  defaultTcpProxyDomain?: string;
+  defaultTcpProxyPort?: number;
 }
 
 export const CreateEditModal: React.FC<CreateEditModalProps> = ({
@@ -17,6 +19,8 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
   onSubmit,
   editConfig,
   existingPorts,
+  defaultTcpProxyDomain = '',
+  defaultTcpProxyPort = 0,
 }) => {
   const isEditing = Boolean(editConfig);
 
@@ -29,6 +33,9 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
   const [expireDays, setExpireDays] = useState<number>(30);
   const [insecure, setInsecure] = useState(true);
   const [notes, setNotes] = useState('');
+  const [enableTcpProxy, setEnableTcpProxy] = useState<boolean>(false);
+  const [tcpProxyDomain, setTcpProxyDomain] = useState<string>('');
+  const [tcpProxyPort, setTcpProxyPort] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -60,6 +67,10 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
         setExpireDays(editConfig.expireDays);
         setInsecure(editConfig.insecure ?? true);
         setNotes(editConfig.notes || '');
+        const hasProxy = Boolean(editConfig.tcpProxyDomain);
+        setEnableTcpProxy(hasProxy);
+        setTcpProxyDomain(editConfig.tcpProxyDomain || defaultTcpProxyDomain);
+        setTcpProxyPort(editConfig.tcpProxyPort ? String(editConfig.tcpProxyPort) : defaultTcpProxyPort ? String(defaultTcpProxyPort) : '');
       } else {
         const unusedPort = getNextAvailablePort();
         setRemark(`User-${Math.floor(100 + Math.random() * 900)}`);
@@ -71,9 +82,13 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
         setExpireDays(30);
         setInsecure(true);
         setNotes('');
+        const hasDefaultProxy = Boolean(defaultTcpProxyDomain && defaultTcpProxyPort > 0);
+        setEnableTcpProxy(hasDefaultProxy);
+        setTcpProxyDomain(defaultTcpProxyDomain || '');
+        setTcpProxyPort(defaultTcpProxyPort ? String(defaultTcpProxyPort) : '');
       }
     }
-  }, [isOpen, editConfig]);
+  }, [isOpen, editConfig, defaultTcpProxyDomain, defaultTcpProxyPort]);
 
   if (!isOpen) return null;
 
@@ -108,6 +123,7 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
 
     setIsSubmitting(true);
     try {
+      const parsedProxyPort = enableTcpProxy && tcpProxyPort ? parseInt(tcpProxyPort, 10) : undefined;
       await onSubmit({
         remark: remark.trim(),
         port: Number(port),
@@ -117,6 +133,8 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
         expireDays: Number(expireDays),
         insecure,
         notes: notes.trim(),
+        tcpProxyDomain: enableTcpProxy && tcpProxyDomain.trim() ? tcpProxyDomain.trim() : undefined,
+        tcpProxyPort: parsedProxyPort && !isNaN(parsedProxyPort) ? parsedProxyPort : undefined,
       });
       onClose();
     } catch (err: any) {
@@ -376,6 +394,71 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
               onChange={(e) => setInsecure(e.target.checked)}
               className="h-4 w-4 rounded border-white/20 bg-[#151515] text-amber-500 focus:ring-amber-500"
             />
+          </div>
+
+          {/* Railway / TCP Proxy Customization */}
+          <div className="rounded-xl border border-white/5 bg-black/30 p-3.5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Radio className="h-4 w-4 text-purple-400" />
+                <div>
+                  <label className="text-xs font-medium text-white block">
+                    Railway TCP Proxy Override
+                  </label>
+                  <span className="text-[11px] text-white/40">
+                    {enableTcpProxy
+                      ? 'Custom TCP Proxy address for NekoBox/Sing-box connections'
+                      : 'Use direct IP connection or global Railway proxy'}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={enableTcpProxy}
+                onClick={() => setEnableTcpProxy(!enableTcpProxy)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  enableTcpProxy ? 'bg-purple-600' : 'bg-white/20'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-black shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    enableTcpProxy ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {enableTcpProxy && (
+              <div className="space-y-2 pt-2 border-t border-white/5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-2">
+                    <label className="text-[11px] text-white/60 mb-1 block">Proxy Domain</label>
+                    <input
+                      type="text"
+                      value={tcpProxyDomain}
+                      onChange={(e) => setTcpProxyDomain(e.target.value)}
+                      placeholder="e.g. junction.proxy.rlwy.net"
+                      className="w-full font-mono rounded-xl border border-white/10 bg-[#0d0d0d] px-3 py-2 text-xs text-white placeholder:text-white/30 focus:border-purple-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-white/60 mb-1 block">Proxy Port</label>
+                    <input
+                      type="number"
+                      value={tcpProxyPort}
+                      onChange={(e) => setTcpProxyPort(e.target.value)}
+                      placeholder="e.g. 12345"
+                      className="w-full font-mono rounded-xl border border-white/10 bg-[#0d0d0d] px-3 py-2 text-xs text-white placeholder:text-white/30 focus:border-purple-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-purple-300/70">
+                  Configs will connect via this TCP proxy address instead of the raw container IP.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Notes */}

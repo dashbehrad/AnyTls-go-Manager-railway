@@ -1,0 +1,12 @@
+# Nixpacks configuration for Railway deployment
+[phases.setup]
+nixPkgs = ["nodejs_20", "curl", "wget", "unzip", "procps", "nettools"]
+
+[phases.build]
+cmds = [
+  "npm install",
+  "npm run build"
+]
+
+[start]
+cmd = "npm start"

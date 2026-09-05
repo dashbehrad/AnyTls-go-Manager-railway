@@ -8,8 +8,18 @@ export function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-export function generateAnyTlsLink(config: AnyTlsConfig, serverIp: string): string {
-  const host = serverIp || '127.0.0.1';
+export interface FormatOptions {
+  proxyHost?: string;
+  proxyPort?: number;
+}
+
+export function generateAnyTlsLink(
+  config: AnyTlsConfig,
+  serverIp: string,
+  options?: FormatOptions
+): string {
+  const host = options?.proxyHost || config.tcpProxyDomain || serverIp || '127.0.0.1';
+  const port = options?.proxyPort || config.tcpProxyPort || config.port;
   const encodedRemark = encodeURIComponent(config.remark);
   const cleanSni = config.sni ? config.sni.trim() : '';
   const sniParam = cleanSni ? `sni=${encodeURIComponent(cleanSni)}` : '';
@@ -19,10 +29,16 @@ export function generateAnyTlsLink(config: AnyTlsConfig, serverIp: string): stri
   const queryStr = queryParts ? `?${queryParts}` : '';
 
   // Standard AnyTLS URI scheme: anytls://password@host:port?params#remark
-  return `anytls://${config.password}@${host}:${config.port}${queryStr}#${encodedRemark}`;
+  return `anytls://${config.password}@${host}:${port}${queryStr}#${encodedRemark}`;
 }
 
-export function generateSingBoxJson(config: AnyTlsConfig, serverIp: string): string {
+export function generateSingBoxJson(
+  config: AnyTlsConfig,
+  serverIp: string,
+  options?: FormatOptions
+): string {
+  const host = options?.proxyHost || config.tcpProxyDomain || serverIp || '127.0.0.1';
+  const port = options?.proxyPort || config.tcpProxyPort || config.port;
   const cleanSni = config.sni ? config.sni.trim() : '';
   const tlsConfig: Record<string, any> = {
     enabled: true,
@@ -36,8 +52,8 @@ export function generateSingBoxJson(config: AnyTlsConfig, serverIp: string): str
   const outbound = {
     type: 'anytls',
     tag: config.remark,
-    server: serverIp || '127.0.0.1',
-    server_port: config.port,
+    server: host,
+    server_port: port,
     password: config.password,
     tls: tlsConfig,
     idle_session_check_interval: '30s',
@@ -48,12 +64,18 @@ export function generateSingBoxJson(config: AnyTlsConfig, serverIp: string): str
   return JSON.stringify(outbound, null, 2);
 }
 
-export function generateClashYaml(config: AnyTlsConfig, serverIp: string): string {
+export function generateClashYaml(
+  config: AnyTlsConfig,
+  serverIp: string,
+  options?: FormatOptions
+): string {
+  const host = options?.proxyHost || config.tcpProxyDomain || serverIp || '127.0.0.1';
+  const port = options?.proxyPort || config.tcpProxyPort || config.port;
   const cleanSni = config.sni ? config.sni.trim() : '';
   let yaml = `  - name: "${config.remark}"
     type: anytls
-    server: ${serverIp || '127.0.0.1'}
-    port: ${config.port}
+    server: ${host}
+    port: ${port}
     password: "${config.password}"`;
 
   if (cleanSni) {

@@ -12,6 +12,7 @@ import {
   HelpCircle,
   Clock,
   Terminal,
+  Radio,
 } from 'lucide-react';
 import { ServerStatus } from '../types';
 
@@ -20,6 +21,7 @@ interface NavbarProps {
   username: string;
   isStandalone?: boolean;
   onOpenInstallGuide: () => void;
+  onOpenRailwayProxy: () => void;
   onOpenChangePassword: () => void;
   onLogout: () => void;
 }
@@ -29,6 +31,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   username,
   isStandalone = false,
   onOpenInstallGuide,
+  onOpenRailwayProxy,
   onOpenChangePassword,
   onLogout,
 }) => {
@@ -113,6 +116,21 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Railway TCP Proxy Button */}
+          <button
+            id="btn-railway-proxy"
+            onClick={onOpenRailwayProxy}
+            title="Configure Railway TCP Proxy settings & connectivity"
+            className="flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs sm:text-sm font-medium text-purple-300 hover:bg-purple-500/20 hover:text-white transition shadow-sm"
+          >
+            <Radio className="h-4 w-4 text-purple-400" />
+            <span className="hidden xs:inline">Railway & TCP Proxy</span>
+            <span className="xs:hidden">Railway</span>
+            {serverStatus?.hasTcpProxy && (
+              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+            )}
+          </button>
+
           {/* Install Guide / Download ZIP Buttons (Only in Development / Web Preview) */}
           {!isStandalone && (
             <>
@@ -167,6 +185,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <Key className="h-4 w-4 text-amber-500" />
                     <span>Change Admin Password</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onOpenRailwayProxy();
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs sm:text-sm text-white/70 hover:bg-white/5 hover:text-white transition"
+                  >
+                    <Radio className="h-4 w-4 text-purple-400" />
+                    <span>Railway & TCP Proxy</span>
                   </button>
 
                   {!isStandalone && (

@@ -14,6 +14,8 @@ export interface AnyTlsConfig {
   notes?: string;
   processRunning?: boolean;
   processPid?: number;
+  tcpProxyDomain?: string;
+  tcpProxyPort?: number;
 }
 
 export interface ConfigProcessDetails {
@@ -41,12 +43,32 @@ export interface ServerStatus {
   totalConfigsCount: number;
   osInfo: string;
   isStandalone?: boolean;
+  isRailway?: boolean;
+  tcpProxyDomain?: string;
+  tcpProxyPort?: number;
+  hasTcpProxy?: boolean;
+  adminUsernameFromEnv?: boolean;
+  adminPasswordFromEnv?: boolean;
+  railwayPublicDomain?: string;
+}
+
+export interface RailwayInfo {
+  isRailway: boolean;
+  tcpProxyDomain: string;
+  tcpProxyPort: number;
+  internalPort: number;
+  hasTcpProxy: boolean;
+  adminUsernameFromEnv: boolean;
+  adminPasswordFromEnv: boolean;
+  railwayPublicDomain?: string;
 }
 
 export interface AdminUser {
   username: string;
   isLoggedIn: boolean;
   token?: string;
+  adminUsernameFromEnv?: boolean;
+  adminPasswordFromEnv?: boolean;
 }
 
 export interface RenewOptions {
@@ -54,3 +76,4 @@ export interface RenewOptions {
   addTrafficGB: number;
   resetTraffic: boolean;
 }
+
