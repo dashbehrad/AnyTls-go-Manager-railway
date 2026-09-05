@@ -6,36 +6,5 @@
   },
   "serverIp": "127.0.0.1",
   "panelPort": 3000,
-  "configs": [
-    {
-      "id": "cfg-326b6eed",
-      "remark": "User-VIP-01",
-      "port": 8080,
-      "password": "rEAudIJ2_PPUCe2N",
-      "sni": "cloudflare.com",
-      "trafficLimitGB": 50,
-      "trafficUsedBytes": 13314398617.6,
-      "expireDays": 30,
-      "expireAt": "2026-10-05T19:12:10.368Z",
-      "createdAt": "2026-09-03T19:12:10.368Z",
-      "status": "active",
-      "insecure": true,
-      "notes": "Default AnyTLS test config for Android and iOS clients"
-    },
-    {
-      "id": "cfg-f4f769f1",
-      "remark": "User-Work-02",
-      "port": 9443,
-      "password": "aNhygOWUQjqSCkCa",
-      "sni": "speedtest.net",
-      "trafficLimitGB": 100,
-      "trafficUsedBytes": 49177375539.2,
-      "expireDays": 60,
-      "expireAt": "2026-10-03T19:12:10.368Z",
-      "createdAt": "2026-08-26T19:12:10.368Z",
-      "status": "active",
-      "insecure": true,
-      "notes": "Compatible with Sing-Box and Clash/Mihomo"
-    }
-  ]
+  "configs": []
 }

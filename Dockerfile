@@ -13,6 +13,7 @@ RUN apt-get update -y && \
       tar \
       unzip \
       procps \
+      psmisc \
       net-tools \
       ca-certificates \
       iproute2 && \
@@ -50,14 +51,16 @@ COPY . .
 # Build Vite frontend & compile server bundle
 RUN npm run build
 
-# Ensure data directory exists
+# Ensure data directory exists and declare persistent volume
 RUN mkdir -p /app/data && chmod 777 /app/data
+VOLUME ["/app/data"]
 
 # Default Railway variables
 ENV NODE_ENV=production
 ENV STANDALONE_PANEL=true
 ENV PORT=3000
 ENV ANYTLS_PORT=8080
+ENV DATA_DIR=/app/data
 
 # Expose Web Panel HTTP port (3000) and internal AnyTLS TCP port (8080)
 EXPOSE 3000

@@ -114,6 +114,11 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
       return;
     }
 
+    if (Number(port) === 3000) {
+      setErrorMessage('پورت 3000 برای پنل وب رزرو شده است. لطفاً پورت دیگری (مانند 8080، 8443 یا 9443) انتخاب کنید.');
+      return;
+    }
+
     if (!password.trim()) {
       setErrorMessage('AnyTLS password cannot be empty');
       return;

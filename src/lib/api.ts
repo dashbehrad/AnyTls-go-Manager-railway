@@ -32,10 +32,18 @@ async function apiRequest<T>(url: string, options: RequestInit = {}): Promise<T>
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch (err: any) {
+    console.error('Fetch failed for URL:', url, err);
+    throw new Error(
+      'خطا در برقراری ارتباط با سرور (Failed to fetch). لطفاً مطمئن شوید پورت انتخابی با پورت پنل مدیریت (3000) تداخل ندارد و سرور در حال اجراست.'
+    );
+  }
 
   const data = await res.json().catch(() => ({}));
 

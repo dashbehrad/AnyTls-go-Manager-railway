@@ -183,6 +183,13 @@ function addProcessLog(configId: string, message: string) {
 // Kill any old stray processes on the designated port before binding
 function killPortOccupant(port: number): Promise<void> {
   return new Promise((resolve) => {
+    // CRITICAL: NEVER kill the web panel port or port 3000!
+    const activeWebPort = Number(process.env.PORT) || 3000;
+    if (port === activeWebPort || port === 3000) {
+      console.warn(`[AnyTLS Supervisor] Prevented killPortOccupant on web panel port ${port}`);
+      resolve();
+      return;
+    }
     if (os.platform() === 'linux') {
       exec(`fuser -k ${port}/tcp 2>/dev/null || true`, () => {
         setTimeout(resolve, 150);
@@ -234,7 +241,15 @@ async function startAnyTlsServer(config: StoredConfig): Promise<boolean> {
     return false;
   }
 
-  const binaryPath = getAnyTlsBinaryPath();
+  let binaryPath = getAnyTlsBinaryPath();
+  if (!binaryPath) {
+    try {
+      binaryPath = await ensureAnyTlsBinary();
+    } catch (binErr: any) {
+      console.warn('[AnyTLS Supervisor] Error ensuring binary on demand:', binErr.message);
+    }
+  }
+
   const info: ProcessInfo = {
     configId: config.id,
     remark: config.remark,
@@ -246,7 +261,7 @@ async function startAnyTlsServer(config: StoredConfig): Promise<boolean> {
 
   if (!binaryPath) {
     info.status = 'failed';
-    const warnMsg = `Binary anytls-server not found at /usr/local/bin/anytls-server. On Ubuntu server, please run install.sh.`;
+    const warnMsg = `Binary anytls-server not found. On Ubuntu server, please run install.sh.`;
     addProcessLog(config.id, warnMsg);
     console.warn(`[AnyTLS] ${warnMsg} (Config: ${config.remark}, Port: ${config.port})`);
     return false;
@@ -434,17 +449,44 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const DATA_FILE = path.join(DATA_DIR, 'config.json');
+function getStorageDir(): string {
+  // 1. Explicit Railway Volume mount path (injected automatically when volume is attached)
+  if (process.env.RAILWAY_VOLUME_MOUNT_PATH && fs.existsSync(process.env.RAILWAY_VOLUME_MOUNT_PATH)) {
+    return process.env.RAILWAY_VOLUME_MOUNT_PATH;
+  }
+  // 2. Custom DATA_DIR env
+  if (process.env.DATA_DIR && fs.existsSync(process.env.DATA_DIR)) {
+    return process.env.DATA_DIR;
+  }
+  // 3. /app/data standard docker container path
+  const appData = path.join(process.cwd(), 'data');
+  return appData;
+}
+
+function ensureDataDir(): string {
+  const dir = getStorageDir();
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    return dir;
+  } catch (err: any) {
+    console.warn(`[Storage] Directory ${dir} inaccessible, falling back to os.tmpdir():`, err.message);
+    const fallback = path.join(os.tmpdir(), 'anytls-data');
+    if (!fs.existsSync(fallback)) {
+      fs.mkdirSync(fallback, { recursive: true });
+    }
+    return fallback;
+  }
+}
+
+function getDataFilePath(): string {
+  const dir = ensureDataDir();
+  return path.join(dir, 'config.json');
+}
 
 function hashPassword(password: string, salt: string): string {
   return crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('hex');
-}
-
-function ensureDataDir(): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
 }
 
 // ----------------------------------------------------
@@ -537,12 +579,6 @@ function getDefaultData(): AppData {
   const salt = crypto.randomBytes(16).toString('hex');
   const passwordHash = hashPassword(envAdminPass || 'admin123', salt);
 
-  const now = new Date();
-  const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-  const defaultSni = (process.env.SNI_DEFAULT || 'cloudflare.com').trim();
-  const defaultPort = Number(process.env.ANYTLS_PORT || 8080);
-
   return {
     admin: {
       username: envAdminUser || 'admin',
@@ -553,43 +589,25 @@ function getDefaultData(): AppData {
     panelPort: 3000,
     tcpProxyDomain: envTcpInfo.domain,
     tcpProxyPort: envTcpInfo.port,
-    configs: [
-      {
-        id: 'cfg-' + crypto.randomBytes(4).toString('hex'),
-        remark: 'Railway-AnyTLS-Auto',
-        port: defaultPort,
-        password: crypto.randomBytes(12).toString('base64url'),
-        sni: defaultSni,
-        trafficLimitGB: 0,
-        trafficUsedBytes: 0,
-        expireDays: 30,
-        expireAt: thirtyDaysLater.toISOString(),
-        createdAt: now.toISOString(),
-        status: 'active',
-        insecure: true,
-        notes: 'Auto-configured AnyTLS profile with automatic Railway TCP Proxy & NekoBox link',
-        tcpProxyDomain: envTcpInfo.domain,
-        tcpProxyPort: envTcpInfo.port,
-      },
-    ],
+    configs: [],
   };
 }
 
 function loadData(): AppData {
-  ensureDataDir();
+  const dataFile = getDataFilePath();
   let data: AppData;
 
-  if (!fs.existsSync(DATA_FILE)) {
+  if (!fs.existsSync(dataFile)) {
     data = getDefaultData();
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    saveData(data);
     return data;
   }
 
   try {
-    const content = fs.readFileSync(DATA_FILE, 'utf-8');
+    const content = fs.readFileSync(dataFile, 'utf-8');
     data = JSON.parse(content);
   } catch (err) {
-    console.error('Error loading config.json:', err);
+    console.error('Error loading config file, fallback to default:', err);
     data = getDefaultData();
   }
 
@@ -643,9 +661,24 @@ function loadData(): AppData {
   return data;
 }
 
-function saveData(data: AppData): void {
-  ensureDataDir();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+function saveData(data: AppData): boolean {
+  try {
+    const dataFile = getDataFilePath();
+    const tempFile = `${dataFile}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tempFile, dataFile);
+    return true;
+  } catch (err: any) {
+    console.error('[Storage] Atomic write failed, attempting direct write:', err.message);
+    try {
+      const dataFile = getDataFilePath();
+      fs.writeFileSync(dataFile, JSON.stringify(data, null, 2), 'utf-8');
+      return true;
+    } catch (directErr: any) {
+      console.error('[Storage] Fatal error writing data file:', directErr);
+      return false;
+    }
+  }
 }
 
 // In-memory active tokens
@@ -988,154 +1021,189 @@ async function startServer() {
   });
 
   app.post('/api/configs', requireAuth, async (req: Request, res: Response) => {
-    const {
-      remark,
-      port,
-      password,
-      sni,
-      trafficLimitGB = 0,
-      expireDays = 30,
-      notes = '',
-      insecure = true,
-      tcpProxyDomain,
-      tcpProxyPort,
-    } = req.body;
+    try {
+      const {
+        remark,
+        port,
+        password,
+        sni,
+        trafficLimitGB = 0,
+        expireDays = 30,
+        notes = '',
+        insecure = true,
+        tcpProxyDomain,
+        tcpProxyPort,
+      } = req.body;
 
-    if (!remark || !port) {
-      res.status(400).json({ error: 'Remark and port are required' });
-      return;
+      if (!remark || !port) {
+        res.status(400).json({ error: 'نام و پورت الزامی هستند' });
+        return;
+      }
+
+      const numericPort = Number(port);
+      if (isNaN(numericPort) || numericPort < 1 || numericPort > 65535) {
+        res.status(400).json({ error: 'پورت نامعتبر است (باید بین ۱ تا ۶۵۵۳۵ باشد)' });
+        return;
+      }
+
+      // Check if port is in use by the web panel
+      const currentWebPort = Number(process.env.PORT) || 3000;
+      if (numericPort === currentWebPort || numericPort === 3000) {
+        res.status(400).json({
+          error: `پورت ${numericPort} برای پنل مدیریت وب رزرو شده است. لطفاً یک پورت دیگر برای کانفیگ AnyTLS (مانند 8080، 8443، 9443، یا 2083) انتخاب کنید.`
+        });
+        return;
+      }
+
+      const data = loadData();
+      const portConflict = data.configs.some((c) => c.port === numericPort);
+      if (portConflict) {
+        res.status(400).json({ error: `پورت ${numericPort} قبلاً استفاده شده است. لطفاً پورت دیگری انتخاب کنید.` });
+        return;
+      }
+
+      const now = new Date();
+      let expireAt: string | null = null;
+      const daysNum = Number(expireDays);
+      if (daysNum > 0) {
+        const exp = new Date(now.getTime() + daysNum * 24 * 60 * 60 * 1000);
+        expireAt = exp.toISOString();
+      }
+
+      const finalPassword = password && password.trim()
+        ? password.trim()
+        : crypto.randomBytes(12).toString('base64url');
+
+      const newConfig: StoredConfig = {
+        id: 'cfg-' + crypto.randomBytes(6).toString('hex'),
+        remark: remark.trim(),
+        port: numericPort,
+        password: finalPassword,
+        sni: (sni !== undefined && typeof sni === 'string') ? sni.trim() : '',
+        trafficLimitGB: Number(trafficLimitGB) || 0,
+        trafficUsedBytes: 0,
+        expireDays: daysNum,
+        expireAt,
+        createdAt: now.toISOString(),
+        status: 'active',
+        insecure: insecure !== false,
+        notes: notes ? notes.trim() : '',
+        tcpProxyDomain: tcpProxyDomain ? String(tcpProxyDomain).trim() : undefined,
+        tcpProxyPort: tcpProxyPort ? Number(tcpProxyPort) : undefined,
+      };
+
+      data.configs.unshift(newConfig);
+      saveData(data);
+
+      // Launch anytls-server process safely without crashing the endpoint
+      try {
+        await startAnyTlsServer(newConfig);
+      } catch (procErr: any) {
+        console.error(`[AnyTLS] Could not start server process immediately for ${newConfig.remark}:`, procErr.message);
+      }
+
+      res.json({
+        success: true,
+        config: {
+          ...newConfig,
+          processRunning: activeProcesses.get(newConfig.id)?.status === 'running',
+          processPid: activeProcesses.get(newConfig.id)?.pid,
+        },
+      });
+    } catch (err: any) {
+      console.error('[API] Error in POST /api/configs:', err);
+      res.status(500).json({ error: err.message || 'خطای سرور در ساخت کانفیگ جدید' });
     }
-
-    const numericPort = Number(port);
-    if (isNaN(numericPort) || numericPort < 1 || numericPort > 65535) {
-      res.status(400).json({ error: 'Invalid port (must be between 1 and 65535)' });
-      return;
-    }
-
-    const data = loadData();
-    const portConflict = data.configs.some((c) => c.port === numericPort);
-    if (portConflict) {
-      res.status(400).json({ error: `Port ${numericPort} is already in use` });
-      return;
-    }
-
-    const now = new Date();
-    let expireAt: string | null = null;
-    const daysNum = Number(expireDays);
-    if (daysNum > 0) {
-      const exp = new Date(now.getTime() + daysNum * 24 * 60 * 60 * 1000);
-      expireAt = exp.toISOString();
-    }
-
-    const finalPassword = password && password.trim()
-      ? password.trim()
-      : crypto.randomBytes(12).toString('base64url');
-
-    const newConfig: StoredConfig = {
-      id: 'cfg-' + crypto.randomBytes(6).toString('hex'),
-      remark: remark.trim(),
-      port: numericPort,
-      password: finalPassword,
-      sni: (sni !== undefined && typeof sni === 'string') ? sni.trim() : '',
-      trafficLimitGB: Number(trafficLimitGB) || 0,
-      trafficUsedBytes: 0,
-      expireDays: daysNum,
-      expireAt,
-      createdAt: now.toISOString(),
-      status: 'active',
-      insecure: insecure !== false,
-      notes: notes ? notes.trim() : '',
-      tcpProxyDomain: tcpProxyDomain ? String(tcpProxyDomain).trim() : undefined,
-      tcpProxyPort: tcpProxyPort ? Number(tcpProxyPort) : undefined,
-    };
-
-    data.configs.unshift(newConfig);
-    saveData(data);
-
-    // Launch anytls-server process immediately
-    await startAnyTlsServer(newConfig);
-
-    res.json({
-      success: true,
-      config: {
-        ...newConfig,
-        processRunning: activeProcesses.get(newConfig.id)?.status === 'running',
-        processPid: activeProcesses.get(newConfig.id)?.pid,
-      },
-    });
   });
 
   app.put('/api/configs/:id', requireAuth, async (req: Request, res: Response) => {
-    const { id } = req.params;
-    const {
-      remark,
-      port,
-      password,
-      sni,
-      trafficLimitGB,
-      expireDays,
-      notes,
-      insecure,
-      tcpProxyDomain,
-      tcpProxyPort,
-    } = req.body;
+    try {
+      const { id } = req.params;
+      const {
+        remark,
+        port,
+        password,
+        sni,
+        trafficLimitGB,
+        expireDays,
+        notes,
+        insecure,
+        tcpProxyDomain,
+        tcpProxyPort,
+      } = req.body;
 
-    const data = loadData();
-    const index = data.configs.findIndex((c) => c.id === id);
-    if (index === -1) {
-      res.status(404).json({ error: 'Configuration not found' });
-      return;
-    }
-
-    const current = data.configs[index];
-    const numericPort = Number(port);
-    if (numericPort && numericPort !== current.port) {
-      const portConflict = data.configs.some((c) => c.id !== id && c.port === numericPort);
-      if (portConflict) {
-        res.status(400).json({ error: `Port ${numericPort} is already in use` });
+      const data = loadData();
+      const index = data.configs.findIndex((c) => c.id === id);
+      if (index === -1) {
+        res.status(404).json({ error: 'کانفیگ یافت نشد' });
         return;
       }
-      current.port = numericPort;
-    }
 
-    if (remark) current.remark = remark.trim();
-    if (password) current.password = password.trim();
-    if (sni !== undefined) current.sni = typeof sni === 'string' ? sni.trim() : '';
-    if (notes !== undefined) current.notes = notes.trim();
-    if (insecure !== undefined) current.insecure = Boolean(insecure);
-    if (trafficLimitGB !== undefined) current.trafficLimitGB = Number(trafficLimitGB);
-    if (tcpProxyDomain !== undefined) current.tcpProxyDomain = tcpProxyDomain ? String(tcpProxyDomain).trim() : undefined;
-    if (tcpProxyPort !== undefined) current.tcpProxyPort = tcpProxyPort ? Number(tcpProxyPort) : undefined;
+      const current = data.configs[index];
+      const numericPort = Number(port);
+      if (numericPort && numericPort !== current.port) {
+        const currentWebPort = Number(process.env.PORT) || 3000;
+        if (numericPort === currentWebPort || numericPort === 3000) {
+          res.status(400).json({
+            error: `پورت ${numericPort} برای پنل مدیریت وب رزرو شده است.`
+          });
+          return;
+        }
 
-    if (expireDays !== undefined) {
-      const daysNum = Number(expireDays);
-      current.expireDays = daysNum;
-      if (daysNum > 0) {
-        const createdTime = new Date(current.createdAt).getTime();
-        current.expireAt = new Date(createdTime + daysNum * 24 * 60 * 60 * 1000).toISOString();
-      } else {
-        current.expireAt = null;
+        const portConflict = data.configs.some((c) => c.id !== id && c.port === numericPort);
+        if (portConflict) {
+          res.status(400).json({ error: `پورت ${numericPort} قبلاً استفاده شده است` });
+          return;
+        }
+        current.port = numericPort;
       }
+
+      if (remark) current.remark = remark.trim();
+      if (password) current.password = password.trim();
+      if (sni !== undefined) current.sni = typeof sni === 'string' ? sni.trim() : '';
+      if (notes !== undefined) current.notes = notes.trim();
+      if (insecure !== undefined) current.insecure = Boolean(insecure);
+      if (trafficLimitGB !== undefined) current.trafficLimitGB = Number(trafficLimitGB);
+      if (tcpProxyDomain !== undefined) current.tcpProxyDomain = tcpProxyDomain ? String(tcpProxyDomain).trim() : undefined;
+      if (tcpProxyPort !== undefined) current.tcpProxyPort = tcpProxyPort ? Number(tcpProxyPort) : undefined;
+
+      if (expireDays !== undefined) {
+        const daysNum = Number(expireDays);
+        current.expireDays = daysNum;
+        if (daysNum > 0) {
+          const createdTime = new Date(current.createdAt).getTime();
+          current.expireAt = new Date(createdTime + daysNum * 24 * 60 * 60 * 1000).toISOString();
+        } else {
+          current.expireAt = null;
+        }
+      }
+
+      data.configs[index] = current;
+      saveData(data);
+
+      // Restart process with updated port/password if active
+      try {
+        if (current.status === 'active') {
+          await startAnyTlsServer(current);
+        } else {
+          stopAnyTlsServer(current.id);
+        }
+      } catch (procErr: any) {
+        console.error(`[AnyTLS] Could not restart process for ${current.remark}:`, procErr.message);
+      }
+
+      res.json({
+        success: true,
+        config: {
+          ...current,
+          processRunning: activeProcesses.get(current.id)?.status === 'running',
+          processPid: activeProcesses.get(current.id)?.pid,
+        },
+      });
+    } catch (err: any) {
+      console.error('[API] Error in PUT /api/configs/:id:', err);
+      res.status(500).json({ error: err.message || 'خطای سرور در ویرایش کانفیگ' });
     }
-
-    data.configs[index] = current;
-    saveData(data);
-
-    // Restart process with updated port/password if active
-    if (current.status === 'active') {
-      await startAnyTlsServer(current);
-    } else {
-      stopAnyTlsServer(current.id);
-    }
-
-    res.json({
-      success: true,
-      config: {
-        ...current,
-        processRunning: activeProcesses.get(current.id)?.status === 'running',
-        processPid: activeProcesses.get(current.id)?.pid,
-      },
-    });
   });
 
   app.post('/api/configs/:id/toggle', requireAuth, async (req: Request, res: Response) => {
