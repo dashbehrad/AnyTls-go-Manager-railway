@@ -150,10 +150,10 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-[#151515] shadow-2xl overflow-hidden my-8">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/5 px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/85 backdrop-blur-sm overflow-y-auto">
+      <div className="relative w-full max-w-lg rounded-2xl border border-white/10 bg-[#151515] shadow-2xl overflow-hidden my-auto max-h-[90vh] flex flex-col">
+        {/* Header - Fixed & Pinned */}
+        <div className="shrink-0 flex items-center justify-between border-b border-white/5 px-6 py-4 bg-[#151515]">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 text-amber-500 border border-white/5">
               <Sparkles className="h-4 w-4" />
@@ -163,35 +163,37 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
             </h2>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-white/40 hover:bg-white/5 hover:text-white transition"
+            className="rounded-lg p-1.5 text-white/40 hover:bg-white/5 hover:text-white transition"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-sm">
-          {errorMessage && (
-            <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
-              {errorMessage}
-            </div>
-          )}
+        {/* Form Body - Scrollable inputs with pinned footer */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden min-h-0">
+          <div className="flex-1 overflow-y-auto p-6 space-y-4 text-sm overscroll-contain">
+            {errorMessage && (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
+                {errorMessage}
+              </div>
+            )}
 
-          {/* User Remark */}
-          <div>
-            <label className="block text-xs font-medium text-white/60 mb-1">
-              👤 Remark / User Label
-            </label>
-            <input
-              type="text"
-              required
-              value={remark}
-              onChange={(e) => setRemark(e.target.value)}
-              placeholder="e.g. User-VIP-01"
-              className="w-full rounded-xl border border-white/10 bg-[#0d0d0d] px-3.5 py-2.5 text-white placeholder:text-white/30 focus:border-amber-500 focus:outline-none"
-            />
-          </div>
+            {/* User Remark */}
+            <div>
+              <label className="block text-xs font-medium text-white/60 mb-1">
+                👤 Remark / User Label
+              </label>
+              <input
+                type="text"
+                required
+                value={remark}
+                onChange={(e) => setRemark(e.target.value)}
+                placeholder="e.g. User-VIP-01"
+                className="w-full rounded-xl border border-white/10 bg-[#0d0d0d] px-3.5 py-2.5 text-white placeholder:text-white/30 focus:border-amber-500 focus:outline-none"
+              />
+            </div>
 
           {/* Port Selection */}
           <div>
@@ -479,25 +481,26 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
               className="w-full rounded-xl border border-white/10 bg-[#0d0d0d] px-3.5 py-2 text-white placeholder:text-white/30 focus:border-amber-500 focus:outline-none"
             />
           </div>
+        </div>
 
-          {/* Footer Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl border border-white/5 bg-white/5 px-4 py-2 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="rounded-xl bg-amber-500 hover:bg-amber-400 text-black px-5 py-2 text-xs font-bold transition disabled:opacity-50"
-            >
-              {isSubmitting ? 'Saving...' : isEditing ? 'Update Configuration' : 'Create Configuration'}
-            </button>
-          </div>
-        </form>
+        {/* Footer Buttons - Fixed & Pinned at bottom */}
+        <div className="shrink-0 flex items-center justify-end gap-3 px-6 py-3.5 border-t border-white/5 bg-[#121212]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-white/5 bg-white/5 px-4 py-2 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="rounded-xl bg-amber-500 hover:bg-amber-400 text-black px-5 py-2 text-xs font-bold transition disabled:opacity-50 shadow-md shadow-amber-500/10"
+          >
+            {isSubmitting ? 'Saving...' : isEditing ? 'Update Configuration' : 'Create Configuration'}
+          </button>
+        </div>
+      </form>
       </div>
     </div>
   );

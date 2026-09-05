@@ -100,10 +100,10 @@ export const RailwayProxyModal: React.FC<RailwayProxyModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-2xl rounded-2xl border border-white/10 bg-[#141414] shadow-2xl my-8 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/5 px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/85 backdrop-blur-sm overflow-y-auto">
+      <div className="relative w-full max-w-2xl rounded-2xl border border-white/10 bg-[#141414] shadow-2xl my-auto max-h-[90vh] flex flex-col overflow-hidden">
+        {/* Header - Fixed & Pinned */}
+        <div className="shrink-0 flex items-center justify-between border-b border-white/5 px-6 py-4 bg-[#141414]">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
               <Radio className="h-5 w-5" />
@@ -121,6 +121,7 @@ export const RailwayProxyModal: React.FC<RailwayProxyModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-white/40 hover:bg-white/5 hover:text-white transition"
           >
@@ -128,7 +129,7 @@ export const RailwayProxyModal: React.FC<RailwayProxyModalProps> = ({
           </button>
         </div>
 
-        <div className="max-h-[75vh] overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-6 overscroll-contain">
           {/* Status summary banner */}
           <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -383,8 +384,8 @@ export const RailwayProxyModal: React.FC<RailwayProxyModalProps> = ({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-white/5 px-6 py-3 bg-[#111] flex items-center justify-between">
+        {/* Footer - Fixed & Pinned */}
+        <div className="shrink-0 border-t border-white/5 px-6 py-3.5 bg-[#111] flex items-center justify-between">
           <div className="text-[11px] text-white/40 font-mono">
             AnyTLS Manager Panel • پنل بهینه‌شده برای Railway
           </div>

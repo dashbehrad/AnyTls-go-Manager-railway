@@ -180,12 +180,18 @@ function addProcessLog(configId: string, message: string) {
   }
 }
 
+// Web panel port tracker - only port 3000 (or standalone panelPort) is reserved
+let activeWebPanelPort = 3000;
+
+function isReservedWebPanelPort(port: number): boolean {
+  return port === activeWebPanelPort || port === 3000;
+}
+
 // Kill any old stray processes on the designated port before binding
 function killPortOccupant(port: number): Promise<void> {
   return new Promise((resolve) => {
     // CRITICAL: NEVER kill the web panel port or port 3000!
-    const activeWebPort = Number(process.env.PORT) || 3000;
-    if (port === activeWebPort || port === 3000) {
+    if (isReservedWebPanelPort(port)) {
       console.warn(`[AnyTLS Supervisor] Prevented killPortOccupant on web panel port ${port}`);
       resolve();
       return;
@@ -697,8 +703,9 @@ async function startServer() {
   // In standalone deployment on Ubuntu/VPS, listen on configured panelPort or process.env.PORT
   // In development / cloud container, port MUST be 3000 as strictly mandated by ingress proxy
   const PORT = isStandaloneEnv
-    ? (Number(initialData.panelPort) || Number(process.env.PORT) || 3000)
+    ? (Number(initialData.panelPort) || 3000)
     : 3000;
+  activeWebPanelPort = PORT;
 
   app.use(express.json());
 
@@ -1046,9 +1053,8 @@ async function startServer() {
         return;
       }
 
-      // Check if port is in use by the web panel
-      const currentWebPort = Number(process.env.PORT) || 3000;
-      if (numericPort === currentWebPort || numericPort === 3000) {
+      // Check if port is in use by the web panel (only port 3000 is reserved)
+      if (isReservedWebPanelPort(numericPort)) {
         res.status(400).json({
           error: `پورت ${numericPort} برای پنل مدیریت وب رزرو شده است. لطفاً یک پورت دیگر برای کانفیگ AnyTLS (مانند 8080، 8443، 9443، یا 2083) انتخاب کنید.`
         });
@@ -1142,10 +1148,9 @@ async function startServer() {
       const current = data.configs[index];
       const numericPort = Number(port);
       if (numericPort && numericPort !== current.port) {
-        const currentWebPort = Number(process.env.PORT) || 3000;
-        if (numericPort === currentWebPort || numericPort === 3000) {
+        if (isReservedWebPanelPort(numericPort)) {
           res.status(400).json({
-            error: `پورت ${numericPort} برای پنل مدیریت وب رزرو شده است.`
+            error: `پورت ${numericPort} برای پنل مدیریت وب رزرو شده است. لطفاً یک پورت دیگر برای کانفیگ AnyTLS (مانند 8080، 8443، 9443، یا 2083) انتخاب کنید.`
           });
           return;
         }
