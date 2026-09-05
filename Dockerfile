@@ -51,9 +51,8 @@ COPY . .
 # Build Vite frontend & compile server bundle
 RUN npm run build
 
-# Ensure data directory exists and declare persistent volume
+# Ensure data directory exists with full permissions
 RUN mkdir -p /app/data && chmod 777 /app/data
-VOLUME ["/app/data"]
 
 # Default Railway variables
 ENV NODE_ENV=production
