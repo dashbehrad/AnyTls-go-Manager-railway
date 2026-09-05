@@ -57,11 +57,11 @@ RUN mkdir -p /app/data && chmod 777 /app/data
 ENV NODE_ENV=production
 ENV STANDALONE_PANEL=true
 ENV PORT=3000
-ENV ANYTLS_PORT=8443
+ENV ANYTLS_PORT=8080
 
-# Expose Web Panel HTTP port (3000) and internal AnyTLS TCP port (8443)
+# Expose Web Panel HTTP port (3000) and internal AnyTLS TCP port (8080)
 EXPOSE 3000
-EXPOSE 8443
+EXPOSE 8080
 
 # Start the bundled server
 CMD ["npm", "start"]

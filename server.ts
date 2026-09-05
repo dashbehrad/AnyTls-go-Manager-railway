@@ -503,7 +503,7 @@ function getEnvTcpProxyInfo(data?: AppData): {
   isAutoDetected: boolean;
 } {
   // Railway automatically sets RAILWAY_TCP_PROXY_DOMAIN & RAILWAY_TCP_PROXY_PORT
-  // when the user clicks "Add TCP Proxy" on internal port 8443. No manual env needed!
+  // when the user clicks "Add TCP Proxy" on internal port 8080. No manual env needed!
   const railwayDomain = (process.env.RAILWAY_TCP_PROXY_DOMAIN || '').trim();
   const railwayPort = Number(process.env.RAILWAY_TCP_PROXY_PORT || 0);
 
@@ -541,7 +541,7 @@ function getDefaultData(): AppData {
   const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
   const defaultSni = (process.env.SNI_DEFAULT || 'cloudflare.com').trim();
-  const defaultPort = Number(process.env.ANYTLS_PORT || 8443);
+  const defaultPort = Number(process.env.ANYTLS_PORT || 8080);
 
   return {
     admin: {
@@ -1281,7 +1281,7 @@ async function startServer() {
     );
     const { username: envAdminUser, isCustomUser, isCustomPass } = getEnvAdminCredentials();
     const envTcpInfo = getEnvTcpProxyInfo(data);
-    const internalPort = Number(process.env.ANYTLS_PORT || 8443);
+    const internalPort = Number(process.env.ANYTLS_PORT || 8080);
 
     res.json({
       isRailway,

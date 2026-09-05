@@ -141,7 +141,7 @@ export const RailwayProxyModal: React.FC<RailwayProxyModalProps> = ({
                     وضعیت استقرار در کانتینر
                   </div>
                   <div className="text-[11px] text-white/50">
-                    پورت داخلی AnyTLS در کانتینر: <span className="font-mono text-purple-300">8443</span>
+                    پورت داخلی AnyTLS در کانتینر: <span className="font-mono text-purple-300">8080</span>
                   </div>
                 </div>
               </div>
@@ -283,7 +283,7 @@ export const RailwayProxyModal: React.FC<RailwayProxyModalProps> = ({
                 <strong>Add TCP Proxy</strong> کلیک کنید.
               </li>
               <li>
-                مقدار <strong>Internal Port</strong> را برابر با <code className="text-purple-300 bg-white/5 px-1 rounded font-mono">8443</code> قرار دهید.
+                مقدار <strong>Internal Port</strong> را برابر با <code className="text-purple-300 bg-white/5 px-1 rounded font-mono">8080</code> قرار دهید.
               </li>
               <li>
                 سایت Railway یک آدرس و پورت مانند <code className="text-purple-300 bg-white/5 px-1 rounded font-mono">junction.proxy.rlwy.net:12345</code> به شما می‌دهد.
@@ -372,7 +372,7 @@ export const RailwayProxyModal: React.FC<RailwayProxyModalProps> = ({
                 </div>
                 <div className="flex items-center gap-1.5 text-white/70 bg-white/[0.02] p-2 rounded-lg border border-white/5">
                   <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                  <span><strong>پورت AnyTLS:</strong> به طور پیش‌فرض روی 8443</span>
+                  <span><strong>پورت AnyTLS:</strong> به طور پیش‌فرض روی 8080</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-white/70 bg-white/[0.02] p-2 rounded-lg border border-white/5">
                   <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />

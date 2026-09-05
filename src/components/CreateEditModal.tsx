@@ -25,7 +25,7 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
   const isEditing = Boolean(editConfig);
 
   const [remark, setRemark] = useState('');
-  const [port, setPort] = useState<number>(8443);
+  const [port, setPort] = useState<number>(8080);
   const [password, setPassword] = useState('');
   const [enableSni, setEnableSni] = useState<boolean>(true);
   const [sni, setSni] = useState('cloudflare.com');
@@ -41,7 +41,7 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
 
   // Find next unused port
   const getNextAvailablePort = () => {
-    const candidates = [8443, 9443, 10443, 11443, 2083, 2087, 2096, 8880];
+    const candidates = [8080, 8443, 9443, 10443, 11443, 2083, 2087, 2096, 8880];
     for (const p of candidates) {
       if (!existingPorts.includes(p)) return p;
     }
@@ -214,7 +214,7 @@ export const CreateEditModal: React.FC<CreateEditModalProps> = ({
               />
             </div>
             <p className="text-[11px] text-white/40 mt-1">
-              Popular AnyTLS ports: 8443, 9443, 443, 2053, 2083
+              Popular AnyTLS ports: 8080, 8443, 9443, 443, 2053, 2083
             </p>
           </div>
 
